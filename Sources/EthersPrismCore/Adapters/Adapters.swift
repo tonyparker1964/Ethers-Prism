@@ -47,6 +47,7 @@ public protocol DomainAdapter: Sendable {
     /// Kinds of dimensions that tend to matter here (guides dial suggestions).
     var dialHint: String { get }
     func compile(_ input: CompileInput) -> CompiledRequest
+    func suggestDials(for goal: String, using providers: ProviderSet) async throws -> [Dial]
     func preview(_ request: CompiledRequest, using providers: ProviderSet) async throws -> Generated
     func render(_ request: CompiledRequest, using providers: ProviderSet) async throws -> Generated
 }
@@ -191,7 +192,7 @@ public struct ImageAdapter: DomainAdapter {
 // MARK: - Registry
 
 public enum Domains {
-    public static let all: [any DomainAdapter] = [text, ImageAdapter(), video, music, code, research]
+    public static let all: [any DomainAdapter] = [text, ImageAdapter(), BlenderStageAdapter(), video, music, code, research]
 
     public static func adapter(for id: String) -> any DomainAdapter {
         all.first { $0.id == id } ?? text

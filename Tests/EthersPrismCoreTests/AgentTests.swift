@@ -134,6 +134,20 @@ final class AgentTests: XCTestCase {
         XCTAssertFalse(msg.contains("{"))
     }
 
+    func testBlenderStageMapsDialsDeterministically() async throws {
+        let stage = BlenderStageAdapter()
+        let dials = try await stage.suggestDials(for: "", using: ProviderSet(text: MockTextProvider(), image: nil))
+        XCTAssertEqual(dials.count, 5)
+        var state = WorkingState(goal: "~/Models/tiger.glb", domainID: "stage", dials: dials, constraints: [])
+        state.dials[0].value = 50
+        let a = stage.compile(CompileInput(state: state, quality: .preview))
+        XCTAssertEqual(a, stage.compile(CompileInput(state: state, quality: .preview)))
+        let p = BlenderStageAdapter.parameters(CompileInput(state: state, quality: .render))
+        XCTAssertEqual(p["orbit"] as? Double, 0.5)
+        XCTAssertTrue((p["model"] as? String)?.hasSuffix("/Models/tiger.glb") ?? false)
+        XCTAssertNil(BlenderStageAdapter.modelPath(from: "a robot"), "no file means the sample model")
+    }
+
     func testMCPTransportRoundTrip() async throws {
         // A stand-in MCP server: answers every request line with a fixed tool list, echoing the id.
         let script = """
