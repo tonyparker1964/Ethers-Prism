@@ -65,6 +65,8 @@ final class AppModel: ObservableObject {
     @Published var sampleIndex = SampleIndex()
     @Published var scanning = false
     @Published var scanStatus: String?
+    /// What the Music Producer chose, or why it couldn't help.
+    @Published var producerNote: String?
 
     private let defaults = UserDefaults.standard
     private let gate = GenerationGate()
@@ -132,8 +134,8 @@ final class AppModel: ObservableObject {
 
     /// The agents the current field actually uses.
     var activeRoles: [AgentRole] {
-        // Beats are made from your samples directly; no agent is involved.
-        if adapter.id == "beats" { return [] }
+        // Beats are made from your samples directly; only the Music Producer helps set them up.
+        if adapter.id == "beats" { return [.producer] }
         var roles: [AgentRole] = [.dialDesigner]
         if adapter.capabilities.needsImageProvider { roles.append(.artDirector) }
         else if adapter.capabilities.kind == .code { roles.append(.coder) }
@@ -144,8 +146,8 @@ final class AppModel: ObservableObject {
 
     /// A setup step that is still missing for the current field, in plain words.
     var configurationIssue: String? {
-        if adapter.id == "beats" {
-            return sampleIndex.isEmpty ? "Add your sample folders in Settings → Sounds → Add Folders…. The scan starts by itself." : nil
+        if adapter.id == "beats", sampleIndex.isEmpty {
+            return "Add your sample folders in Settings → Sounds → Add Folders…. The scan starts by itself."
         }
         let needKey = activeRoles.filter { team.assignment($0).backend == .anthropic }
         if !needKey.isEmpty && !hasAPIKey {
@@ -162,7 +164,9 @@ final class AppModel: ObservableObject {
     }
 
     var usingMock: Bool {
-        activeRoles.contains { team.assignment($0).backend == .mock }
+        // Beats are always real audio; a mock producer just means standard dials.
+        if adapter.id == "beats" { return false }
+        return activeRoles.contains { team.assignment($0).backend == .mock }
             || (adapter.capabilities.needsImageProvider && imageProviderKind == "mock")
     }
 
@@ -284,6 +288,10 @@ final class AppModel: ObservableObject {
         }
         suggesting = true
         defer { suggesting = false }
+        if adapter.id == "beats" {
+            await suggestBeatDials(s)
+            return
+        }
         do {
             let dials = try await adapter.suggestDials(for: s.goal, using: providers)
             updateSession(s.id) { $0.dials = dials }
@@ -291,6 +299,41 @@ final class AppModel: ObservableObject {
         } catch {
             phase = .failed(error.localizedDescription)
         }
+    }
+
+    /// Beats: standard dials, then the Music Producer (if it's set up) picks the style, kits and starting positions.
+    /// Its picks show up as dial positions and as "Style:" and "Kit:" requirements you can edit or delete.
+    private func suggestBeatDials(_ s: Session) async {
+        guard let base = try? await adapter.suggestDials(for: s.goal, using: providers) else { return }
+        var dials = base
+        var constraints = s.constraints
+        producerNote = nil
+        if team.assignment(.producer).backend != .mock, !sampleIndex.isEmpty {
+            do {
+                let plan = try await BeatProducer.plan(goal: s.goal, index: sampleIndex, constraints: s.constraints,
+                                                       using: provider(for: .producer))
+                dials = BeatProducer.apply(plan, to: base)
+                constraints = BeatProducer.constraints(for: plan, keeping: s.constraints)
+                if let style = plan.style {
+                    // Tempo poles follow the style the producer chose, not just the goal's words.
+                    let lo = Int(style.tempo.lowerBound), hi = Int(style.tempo.upperBound)
+                    if let i = dials.firstIndex(where: { $0.name.lowercased() == "tempo" }) {
+                        dials[i].lowPole = "\(lo) BPM"
+                        dials[i].highPole = "\(hi) BPM"
+                        dials[i].detail = "Speed within the \(style.name.lowercased()) range."
+                    }
+                }
+                let kits = plan.kits.isEmpty ? "" : " Kits: \(plan.kits.joined(separator: ", "))."
+                producerNote = "Music Producer: \(plan.note.isEmpty ? "set up the dials." : plan.note)\(kits)"
+            } catch {
+                producerNote = "The Music Producer couldn't help (\(error.localizedDescription)), so these are the standard dials. Check Settings → Agents."
+            }
+        }
+        updateSession(s.id) {
+            $0.dials = dials
+            $0.constraints = constraints
+        }
+        generate(.preview, force: true)
     }
 
     /// Waits until the dials stop moving, then previews once.

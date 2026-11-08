@@ -2,7 +2,7 @@ import Foundation
 
 /// One job inside the instrument. Each job gets its own model; the person still steers and chooses.
 public enum AgentRole: String, Codable, CaseIterable, Hashable, Sendable {
-    case dialDesigner, writer, artDirector, coder, checker
+    case dialDesigner, writer, artDirector, coder, checker, producer
 
     public var title: String {
         switch self {
@@ -11,6 +11,7 @@ public enum AgentRole: String, Codable, CaseIterable, Hashable, Sendable {
         case .artDirector: return "Art Director"
         case .coder: return "Coder"
         case .checker: return "Checker"
+        case .producer: return "Music Producer"
         }
     }
 
@@ -21,6 +22,7 @@ public enum AgentRole: String, Codable, CaseIterable, Hashable, Sendable {
         case .artDirector: return "Turns dials and requirements into image prompts."
         case .coder: return "Writes code for the Code field."
         case .checker: return "Reviews each result against the fixed requirements and flags problems. Never rewrites."
+        case .producer: return "For Beats: reads your goal and your sample library, then picks the style, the kits and where the dials start."
         }
     }
 }
@@ -80,7 +82,8 @@ public struct AgentTeam: Codable, Hashable, Sendable {
         AgentAssignment(role: .writer, backend: .lmStudio, model: smallLocalModel),
         AgentAssignment(role: .artDirector, backend: .lmStudio, model: smallLocalModel),
         AgentAssignment(role: .coder, backend: .lmStudio, model: coderModel),
-        AgentAssignment(role: .checker, backend: .lmStudio, model: smallLocalModel)
+        AgentAssignment(role: .checker, backend: .lmStudio, model: smallLocalModel),
+        AgentAssignment(role: .producer, backend: .lmStudio, model: smallLocalModel)
     ])
 
     public static let mock = AgentTeam(assignments: AgentRole.allCases.map {

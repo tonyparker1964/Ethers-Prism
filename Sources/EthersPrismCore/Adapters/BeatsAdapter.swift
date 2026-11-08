@@ -17,6 +17,16 @@ public struct BeatsAdapter: DomainAdapter {
 
     public init() {}
 
+    /// The style a state asks for: a "Style:" requirement wins, otherwise the goal decides.
+    public static func style(for state: WorkingState) -> BeatStyle {
+        if let pick = state.constraints.first(where: { $0.isActive && $0.kind == .other && $0.text.hasPrefix(BeatProducer.stylePrefix) }) {
+            let named = String(pick.text.dropFirst(BeatProducer.stylePrefix.count)).lowercased()
+            if let exact = BeatStyle.all.first(where: { $0.name.lowercased() == named || $0.id == named }) { return exact }
+            return BeatStyle.detect(in: named)
+        }
+        return BeatStyle.detect(in: state.goal)
+    }
+
     public func suggestDials(for goal: String, using providers: ProviderSet) async throws -> [Dial] {
         let style = BeatStyle.detect(in: goal)
         let lo = Int(style.tempo.lowerBound), hi = Int(style.tempo.upperBound)
@@ -60,14 +70,19 @@ public struct BeatsAdapter: DomainAdapter {
     static let styleWords: Set<String> = Set(BeatStyle.all.flatMap { $0.keywords.flatMap { SampleScanner.tokens($0) } })
         .union(["beat", "beats", "with", "make", "some", "that", "this", "drums", "groove", "track", "song", "music",
                 "using", "from", "like", "kind", "vibe", "style", "heavy", "dark", "bright", "slow", "fast"])
+        .union(genericKitWords)
+    /// Words in nearly every kit name, so they never decide which kit is meant.
+    static let genericKitWords: Set<String> = ["kit", "kits", "library", "libraries", "expansion", "expansions", "sounds", "the", "and"]
 
     /// Picks one sample per role: the Kit dial chooses a kit; requirements and the goal narrow the choice.
     public static func choose(from index: SampleIndex, goal: String, constraints: [Constraint], kit: Double,
                               seed: UInt64) -> [SampleRole: SampleFile] {
         let avoid = constraints.filter { $0.isActive && $0.kind == .mustAvoid }
             .flatMap { SampleScanner.tokens($0.text) }.filter { $0.count >= 3 }
-        let include = constraints.filter { $0.isActive && $0.kind == .mustInclude }
-            .flatMap { SampleScanner.tokens($0.text) }.filter { $0.count >= 3 }
+        // Each Must include names one kit; all of its words have to be in the kit's name.
+        let includePhrases = constraints.filter { $0.isActive && $0.kind == .mustInclude }
+            .map { SampleScanner.tokens($0.text).filter { $0.count >= 2 && !genericKitWords.contains($0) } }
+            .filter { !$0.isEmpty }
         let goalWords = SampleScanner.tokens(goal).filter { $0.count >= 4 && !styleWords.contains($0) }
 
         var files = index.files
@@ -79,9 +94,13 @@ public struct BeatsAdapter: DomainAdapter {
         }
         // Kits that have at least a kick and something for the backbeat come first.
         var kits = Dictionary(grouping: files, by: \.group)
-        let wanted = include + goalWords
-        if !wanted.isEmpty {
-            let named = kits.filter { k, _ in wanted.contains { k.lowercased().contains($0) } }
+        func matches(_ kit: String) -> Bool {
+            let words = Set(SampleScanner.tokens(kit))
+            if includePhrases.contains(where: { $0.allSatisfy { words.contains($0) } }) { return true }
+            return goalWords.contains { words.contains($0) }
+        }
+        if !includePhrases.isEmpty || !goalWords.isEmpty {
+            let named = kits.filter { k, _ in matches(k) }
             if !named.isEmpty { kits = named }
         }
         let complete = kits.filter { _, fs in
@@ -114,7 +133,7 @@ public struct BeatsAdapter: DomainAdapter {
         }
         let state = request.input.state
         let p = BeatParameters(dials: state.dials)
-        let style = BeatStyle.detect(in: state.goal)
+        let style = Self.style(for: state)
         let chosen = Self.choose(from: index, goal: state.goal, constraints: state.constraints, kit: p.kit, seed: request.seed)
         guard chosen[.kick] != nil || chosen[.snare] != nil || chosen[.clap] != nil else {
             throw PrismError.local("None of your samples fit as drums after the requirements were applied. Check the Must avoid requirements or add more folders.")

@@ -70,6 +70,13 @@ public struct SampleIndex: Codable, Hashable, Sendable {
     public func count(_ role: SampleRole) -> Int { files.filter { $0.role == role }.count }
 
     public var groups: [String] { Array(Set(files.map(\.group))).sorted() }
+
+    /// Kits with at least a kick and a snare or clap: the ones a whole beat can come from.
+    public var drumKits: [String] {
+        Dictionary(grouping: files, by: \.group)
+            .filter { _, fs in fs.contains { $0.role == .kick } && fs.contains { $0.role == .snare || $0.role == .clap } }
+            .keys.sorted()
+    }
 }
 
 /// Reads folders of samples and sorts each file into a role by its name and the folders it sits in.

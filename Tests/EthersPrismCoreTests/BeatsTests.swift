@@ -85,3 +85,45 @@ final class BeatsTests: XCTestCase {
         XCTAssertEqual(String(decoding: midi.prefix(4), as: UTF8.self), "MThd")
     }
 }
+
+final class ProducerTests: XCTestCase {
+    let kits = ["Amplified Funk Library", "Basement Era Library", "Battery 4 Factory Library"]
+
+    func testProducerAnswerIsReadAndCheckedAgainstTheLibrary() throws {
+        let raw = #"<think>hmm</think>{"style": "lofi", "kits": ["basement era library", "Not A Real Kit"], "dials": {"tempo": 30, "swing": 140, "mood": 5}, "note": "Dusty and slow."}"#
+        let plan = try BeatProducer.parse(raw, kits: kits)
+        XCTAssertEqual(plan.style?.id, "lofi")
+        XCTAssertEqual(plan.kits, ["Basement Era Library"])
+        XCTAssertEqual(plan.dialValues["tempo"], 30)
+        XCTAssertEqual(plan.dialValues["swing"], 100)
+        XCTAssertNil(plan.dialValues["mood"])
+        XCTAssertEqual(try BeatProducer.parse(#"{"style":"Drum and bass","kits":[],"dials":{},"note":""}"#, kits: kits).style?.id, "dnb")
+        XCTAssertNil(try BeatProducer.parse(#"{"style":"polka","kits":[],"dials":{},"note":""}"#, kits: kits).style)
+    }
+
+    func testPicksBecomeEditableRequirementsAndReplaceEarlierPicks() {
+        let mine = Constraint(kind: .mustAvoid, text: "rusty")
+        let old = Constraint(kind: .mustInclude, text: BeatProducer.kitPrefix + "Old Kit")
+        let plan = ProducerPlan(style: .trap, kits: ["Amplified Funk Library"], dialValues: ["tempo": 80], note: "")
+        let out = BeatProducer.constraints(for: plan, keeping: [mine, old])
+        XCTAssertEqual(out.map(\.text), ["rusty", "Style: Trap", "Kit: Amplified Funk Library"])
+        let state = WorkingState(goal: "chill beat", domainID: "beats", dials: [], constraints: out)
+        XCTAssertEqual(BeatsAdapter.style(for: state).id, "trap")
+        let dials = BeatProducer.apply(plan, to: [Dial(name: "Tempo", lowPole: "a", highPole: "b", value: 50),
+                                                  Dial(name: "Kit", lowPole: "a", highPole: "b", value: 70)])
+        XCTAssertEqual(dials.map(\.value), [80, 0])
+    }
+
+    func testKitRequirementMatchesWholeNameNotJustLibrary() {
+        let files = kits.flatMap { k in
+            [SampleFile(path: "/x/\(k)/Kick.wav", role: .kick, group: k), SampleFile(path: "/x/\(k)/Snare.wav", role: .snare, group: k)]
+        }
+        let index = SampleIndex(roots: ["/x"], files: files)
+        let pick = [Constraint(kind: .mustInclude, text: "Kit: Basement Era Library")]
+        for kit in [0.0, 0.5, 0.99] {
+            XCTAssertEqual(BeatsAdapter.choose(from: index, goal: "beat", constraints: pick, kit: kit, seed: 1)[.kick]?.group,
+                           "Basement Era Library")
+        }
+        XCTAssertEqual(index.drumKits, kits.sorted())
+    }
+}

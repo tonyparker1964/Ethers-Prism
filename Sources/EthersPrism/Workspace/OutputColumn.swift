@@ -17,6 +17,9 @@ struct OutputColumn: View {
                 } else if model.usingMock {
                     Banner(style: .info, text: "Using the Mock provider: results are test placeholders, not real generations. Switch providers in Settings.")
                 }
+                if model.adapter.id == "beats", let note = model.producerNote {
+                    Banner(style: .info, text: note)
+                }
                 if case .failed(let message) = model.phase {
                     Banner(style: .error, text: message, actionTitle: "Retry") { model.retry() }
                 }
