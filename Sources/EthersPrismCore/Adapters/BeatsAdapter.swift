@@ -76,7 +76,7 @@ public struct BeatsAdapter: DomainAdapter {
 
     /// Picks one sample per role: the Kit dial chooses a kit; requirements and the goal narrow the choice.
     public static func choose(from index: SampleIndex, goal: String, constraints: [Constraint], kit: Double,
-                              seed: UInt64) -> [SampleRole: SampleFile] {
+                              seed: UInt64, taste: TasteProfile = TasteProfile()) -> [SampleRole: SampleFile] {
         let avoid = constraints.filter { $0.isActive && $0.kind == .mustAvoid }
             .flatMap { SampleScanner.tokens($0.text) }.filter { $0.count >= 3 }
         // Each Must include names one kit; all of its words have to be in the kit's name.
@@ -106,7 +106,10 @@ public struct BeatsAdapter: DomainAdapter {
         let complete = kits.filter { _, fs in
             fs.contains { $0.role == .kick } && fs.contains { $0.role == .snare || $0.role == .clap }
         }
-        let names = (complete.isEmpty ? Array(kits.keys) : Array(complete.keys)).sorted()
+        var names = (complete.isEmpty ? Array(kits.keys) : Array(complete.keys)).sorted()
+        // Kits you've turned down are skipped while there are others to choose from.
+        let welcome = names.filter { taste.score(kit: $0) >= 0 }
+        if !welcome.isEmpty { names = welcome }
         guard !names.isEmpty else { return [:] }
         let kitName = names[min(names.count - 1, Int((kit * Double(names.count)).rounded(.down)))]
         let kitFiles = kits[kitName] ?? []
@@ -115,12 +118,19 @@ public struct BeatsAdapter: DomainAdapter {
         var out: [SampleRole: SampleFile] = [:]
         for role in SampleRole.allCases {
             let draw = rng.unit()
+            let preferDraw = rng.unit()
             var pool = kitFiles.filter { $0.role == role }
             // A missing sound comes from elsewhere in the library only when the kit has nothing that can
-            // stand in for it (a kit with a clap but no snare plays the clap). Bass can always come from anywhere.
+            // stand in for it (a kit with a clap but no snare plays the clap). Bass never comes from another
+            // kit: a stranger's bass rarely fits, so the built-in sub plays instead.
             let kitCovers = role.fallbacks.contains { r in kitFiles.contains { $0.role == r } }
-            if pool.isEmpty, role == .bass || !kitCovers { pool = files.filter { $0.role == role } }
+            if pool.isEmpty, role != .bass, !kitCovers { pool = files.filter { $0.role == role } }
             if pool.isEmpty { continue }
+            // Your ratings: sounds you turned down are left out, sounds you liked come up more often.
+            let notDisliked = pool.filter { taste.score(sample: $0.path) >= 0 }
+            if !notDisliked.isEmpty { pool = notDisliked }
+            let liked = pool.filter { taste.score(sample: $0.path) > 0 }
+            if !liked.isEmpty, preferDraw < 0.6 { pool = liked }
             out[role] = pool[min(pool.count - 1, Int(draw * Double(pool.count)))]
         }
         return out
@@ -134,7 +144,8 @@ public struct BeatsAdapter: DomainAdapter {
         let state = request.input.state
         let p = BeatParameters(dials: state.dials)
         let style = Self.style(for: state)
-        let chosen = Self.choose(from: index, goal: state.goal, constraints: state.constraints, kit: p.kit, seed: request.seed)
+        let chosen = Self.choose(from: index, goal: state.goal, constraints: state.constraints, kit: p.kit, seed: request.seed,
+                                 taste: BeatsLibrary.shared.taste)
         guard chosen[.kick] != nil || chosen[.snare] != nil || chosen[.clap] != nil else {
             throw PrismError.local("None of your samples fit as drums after the requirements were applied. Check the Must avoid requirements or add more folders.")
         }
@@ -170,7 +181,8 @@ public struct BeatsAdapter: DomainAdapter {
         let kits = Set(chosen.values.map(\.group)).sorted().joined(separator: ", ")
         return Generated(
             output: Output(kind: .audio, text: lines.joined(separator: "\n"), provider: "Ethers Prism Beats",
-                           model: kits.isEmpty ? "your samples" : kits, agent: "Beat Maker"),
+                           model: kits.isEmpty ? "your samples" : kits, agent: "Beat Maker",
+                           samples: chosen.filter { sounds[$0.key] != nil }.map { $0.value.path }.sorted()),
             asset: wav, assetExtension: "wav", extraAssets: ["mid": midi])
     }
 }

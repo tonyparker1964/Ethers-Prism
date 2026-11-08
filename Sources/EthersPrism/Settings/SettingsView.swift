@@ -179,6 +179,14 @@ struct SettingsView: View {
                         LabeledContent(role.label) { Text("\(model.sampleIndex.count(role))").monospacedDigit() }
                     }
                     LabeledContent("Kits") { Text("\(model.sampleIndex.groups.count)").monospacedDigit() }
+                    let taste = BeatsLibrary.shared.taste
+                    LabeledContent("Taste learned from your ratings") {
+                        Text(taste.isEmpty ? "none yet" : "\(taste.likedKits.count) liked kits, \(taste.dislikedKits.count) turned down")
+                    }
+                    .id(model.tasteVersion)
+                    if !taste.isEmpty {
+                        Button("Forget My Ratings") { model.forgetTaste() }
+                    }
                     Text("The Kit dial steps through kits that have a kick and a snare or clap. Put a kit's name in your goal, or in a Must include requirement, to use only kits with that name. A Must avoid requirement leaves out any sample whose name or folder contains those words.")
                         .font(.caption).foregroundStyle(.secondary)
                 }

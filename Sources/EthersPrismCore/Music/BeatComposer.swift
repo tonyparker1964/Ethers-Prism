@@ -169,10 +169,8 @@ public struct BeatPlan: Hashable, Sendable {
 }
 
 public enum BeatComposer {
-    /// Extra hits each role can gain when the beat gets busy.
-    static let extras: [SampleRole: Double] = [.kick: 0.18, .snare: 0.14, .clap: 0.05, .closedHat: 0.85,
-                                               .openHat: 0.12, .perc: 0.4]
-    static let scale: [Double] = [0, 0, 0, 7, 3, 5, 10, -2, 12]
+    /// Bass notes that always sit well under drums: mostly the root, then octave, fifth and fourth below.
+    static let scale: [Double] = [0, 0, 0, 7, 12, -5, 3, 0]
 
     /// The same style, seed, parameters and bar count always give the same beat.
     /// Every step draws the same amount of randomness whatever the dials say, so turning a dial
@@ -203,9 +201,28 @@ public enum BeatComposer {
                     let p0: Double
                     let vel: Double
                     switch c {
-                    case "x": p0 = p.density < 0.12 && step % 4 != 0 && role == .closedHat ? 0 : 1; vel = step % 4 == 0 ? 1 : 0.88
-                    case "o": p0 = 0.15 + 0.8 * p.density; vel = 0.72
-                    default: p0 = (extras[role] ?? 0) * pow(p.density, 1.6); vel = role == .snare ? 0.32 : 0.5
+                    case "x":
+                        p0 = p.density < 0.12 && step % 4 != 0 && role == .closedHat ? 0 : 1
+                        vel = accent(role, step)
+                    case "o":
+                        p0 = 0.15 + 0.8 * p.density
+                        vel = role == .closedHat ? 0.55 : 0.72
+                    default:
+                        // Extra hits only where they sound intentional: off-beat 16th hats, snare ghost notes,
+                        // and pickup kicks. Never scattered anywhere.
+                        if role == .closedHat, step % 2 == 1 {
+                            p0 = p.density > 0.62 ? 1 : (p.density > 0.45 ? 0.5 : 0)
+                            vel = 0.42
+                        } else if role == .snare, step == 7 || step == 10 || step == 15 {
+                            p0 = p.variation > 0.45 ? min(0.8, p.density) : 0
+                            vel = 0.26
+                        } else if role == .kick, step == 3 || step == 11 || step == 14 {
+                            p0 = p.density > 0.7 ? 0.5 : 0
+                            vel = 0.75
+                        } else {
+                            p0 = 0
+                            vel = 0
+                        }
                     }
                     guard draw < p0 else { continue }
                     barEvents.append(BeatEvent(role: role, time: base + Double(step), velocity: vel))
@@ -223,18 +240,19 @@ public enum BeatComposer {
             // A short fill at the end of every four bars, more likely as variation rises.
             var fillRng = SplitMix64(seed: patternSeed ^ 0xF111 &+ UInt64(bar))
             let fillChance = fillRng.unit()
-            if isFillBar, bars > 1, fillChance < p.variation * 1.2 - 0.1 {
+            if isFillBar, bars > 1, p.variation > 0.35, fillChance < p.variation {
                 barEvents.removeAll { $0.time >= base + 12 && ($0.role == .snare || $0.role == .closedHat) }
                 for step in 12..<16 {
                     let d = fillRng.unit()
                     if d < 0.55 + 0.4 * p.variation {
-                        let role: SampleRole = d < 0.3 ? .tom : .snare
+                        let role: SampleRole = d < 0.2 ? .tom : .snare
                         barEvents.append(BeatEvent(role: role, time: base + Double(step), velocity: 0.55 + 0.1 * Double(step - 12)))
                     }
                 }
             }
-            if bar > 0, bar % 4 == 0, p.variation > 0.2 {
-                barEvents.append(BeatEvent(role: .cymbal, time: base, velocity: 0.8))
+            // One crash to mark each new 8-bar section, and only when the beat is meant to evolve.
+            if bar > 0, bar % 8 == 0, p.variation > 0.55 {
+                barEvents.append(BeatEvent(role: .cymbal, time: base, velocity: 0.7))
             }
 
             // Bass follows the kick and picks notes from a simple minor scale.
@@ -255,7 +273,7 @@ public enum BeatComposer {
                 let step = barEvents[i].time - base
                 let wholeStep = step.rounded(.down)
                 if Int(wholeStep) % 2 == 1, step == wholeStep { barEvents[i].time += swingAmount }
-                let jitter = (feel.unit() * 2 - 1) * style.humanize * 0.07
+                let jitter = (feel.unit() * 2 - 1) * style.humanize * 0.035
                 let soften = 1 - style.humanize * 0.3 * feel.unit()
                 if !(barEvents[i].role == .kick && step == 0) { barEvents[i].time = max(0, barEvents[i].time + jitter) }
                 barEvents[i].velocity = min(1, max(0.05, barEvents[i].velocity * soften))
@@ -264,5 +282,13 @@ public enum BeatComposer {
         }
         events.sort { $0.time == $1.time ? $0.role.rawValue < $1.role.rawValue : $0.time < $1.time }
         return BeatPlan(style: style, bpm: bpm, bars: max(1, bars), events: events)
+    }
+
+    /// Loudness of a main hit by where it falls: hats lean on the beat so the groove breathes.
+    static func accent(_ role: SampleRole, _ step: Int) -> Double {
+        if role == .closedHat || role == .perc {
+            return step % 4 == 0 ? 0.95 : (step % 2 == 0 ? 0.72 : 0.58)
+        }
+        return step % 4 == 0 ? 1 : 0.9
     }
 }

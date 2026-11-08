@@ -37,9 +37,14 @@ public struct Output: Codable, Hashable, Sendable {
     public var agent: String?
     /// The Checker's review, added after generation. Never changes the result itself.
     public var review: Review?
+    /// Beats: the sample files that were played, so a rating can teach Prism which sounds you like.
+    public var samples: [String]?
+    /// Beats: your rating, +1 (like) or -1 (not for me).
+    public var rating: Int?
 
     public init(kind: OutputKind, text: String? = nil, assetPath: String? = nil, imagePrompt: String? = nil,
-                provider: String, model: String, promptModel: String? = nil, agent: String? = nil, review: Review? = nil) {
+                provider: String, model: String, promptModel: String? = nil, agent: String? = nil, review: Review? = nil,
+                samples: [String]? = nil) {
         self.kind = kind
         self.text = text
         self.assetPath = assetPath
@@ -49,6 +54,8 @@ public struct Output: Codable, Hashable, Sendable {
         self.promptModel = promptModel
         self.agent = agent
         self.review = review
+        self.samples = samples
+        self.rating = nil
     }
 }
 

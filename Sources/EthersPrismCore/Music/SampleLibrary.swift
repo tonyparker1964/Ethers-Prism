@@ -209,9 +209,15 @@ public final class BeatsLibrary: @unchecked Sendable {
     public static let shared = BeatsLibrary()
     private let lock = NSLock()
     private var _index = SampleIndex()
+    private var _taste = TasteProfile()
 
     public var index: SampleIndex {
         get { lock.lock(); defer { lock.unlock() }; return _index }
         set { lock.lock(); _index = newValue; lock.unlock() }
+    }
+
+    public var taste: TasteProfile {
+        get { lock.lock(); defer { lock.unlock() }; return _taste }
+        set { lock.lock(); _taste = newValue; lock.unlock() }
     }
 }

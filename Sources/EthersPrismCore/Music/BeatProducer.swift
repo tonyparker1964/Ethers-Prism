@@ -28,7 +28,8 @@ public enum BeatProducer {
     /// Flat on purpose: small local models follow a flat schema far more reliably than nested objects.
     public static let schema = #"{"type":"object","properties":{"style":{"type":"string"},"kits":{"type":"array","items":{"type":"string"}},"tempo":{"type":"number"},"swing":{"type":"number"},"density":{"type":"number"},"variation":{"type":"number"},"tone":{"type":"number"},"bass":{"type":"number"},"pattern":{"type":"number"},"note":{"type":"string"}},"required":["style","kits","tempo","swing","density","variation","tone","bass","pattern","note"],"additionalProperties":false}"#
 
-    public static func request(goal: String, kits: [String], constraints: [Constraint]) -> TextRequest {
+    public static func request(goal: String, kits: [String], constraints: [Constraint],
+                               taste: TasteProfile = TasteProfile()) -> TextRequest {
         let styles = BeatStyle.all.map { "- \($0.id): \($0.name), \(Int($0.tempo.lowerBound))–\(Int($0.tempo.upperBound)) BPM" }
             .joined(separator: "\n")
         let kitList = kits.prefix(300).map { "- \($0)" }.joined(separator: "\n")
@@ -46,6 +47,10 @@ public enum BeatProducer {
         """
         var user = "Goal: \(goal.trimmed)\n\nStyles:\n\(styles)\n\nKits in the library:\n\(kitList.isEmpty ? "(none)" : kitList)"
         if !fixed.isEmpty { user += "\n\nFixed requirements:\n\(fixed)" }
+        let liked = taste.likedKits.filter { kits.contains($0) }.prefix(10)
+        let disliked = taste.dislikedKits.filter { kits.contains($0) }.prefix(10)
+        if !liked.isEmpty { user += "\n\nKits the person has liked before (prefer these when they fit): \(liked.joined(separator: ", "))" }
+        if !disliked.isEmpty { user += "\nKits the person didn't like (avoid): \(disliked.joined(separator: ", "))" }
         // Room to spare: a model that thinks before answering can use hundreds of tokens first.
         return TextRequest(system: system, user: user, maxTokens: 2500, schema: schema)
     }
@@ -105,9 +110,9 @@ public enum BeatProducer {
     }
 
     public static func plan(goal: String, index: SampleIndex, constraints: [Constraint],
-                            using provider: any TextProvider) async throws -> ProducerPlan {
+                            using provider: any TextProvider, taste: TasteProfile = TasteProfile()) async throws -> ProducerPlan {
         let kits = index.drumKits
-        let req = request(goal: goal, kits: kits, constraints: constraints)
+        let req = request(goal: goal, kits: kits, constraints: constraints, taste: taste)
         do {
             return try parse(try await provider.complete(req), kits: kits)
         } catch let e as PrismError where e != .missingAPIKey {
@@ -139,7 +144,7 @@ public enum BeatProducer {
 
     /// Reads mood words in the goal and picks kits whose names match the goal or the style.
     /// Always works, needs no model, and gives the same answer for the same goal.
-    public static func builtIn(goal: String, kits available: [String]) -> ProducerPlan {
+    public static func builtIn(goal: String, kits available: [String], taste: TasteProfile = TasteProfile()) -> ProducerPlan {
         let g = " " + BeatStyle.words(goal) + " "
         var sums: [String: (total: Double, count: Double)] = [:]
         var heard: [String] = []
@@ -168,8 +173,21 @@ public enum BeatProducer {
             if kits.count == 3 { break }
         }
 
+        // Dials the goal said nothing about start where your liked beats in this style usually sit.
+        let learned = taste.likedDials(style: (style ?? detected).id)
+        var usedTaste = false
+        for (dial, v) in learned where values[dial] == nil {
+            values[dial] = v
+            usedTaste = true
+        }
+        // No kit named or implied: start with kits you've liked most.
+        if kits.isEmpty {
+            kits = Array(taste.likedKits.filter { available.contains($0) && taste.score(kit: $0) >= 2 }.prefix(2))
+        }
+
         var parts: [String] = []
         if let style { parts.append(style.name.lowercased()) }
+        if usedTaste { parts.append("other dials from beats you liked") }
         if !heard.isEmpty { parts.append("heard “\(heard.joined(separator: "”, “"))”") }
         let note = parts.isEmpty
             ? "no style or mood words found in the goal, so the dials start in the middle."

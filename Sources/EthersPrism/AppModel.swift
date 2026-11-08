@@ -67,6 +67,8 @@ final class AppModel: ObservableObject {
     @Published var scanStatus: String?
     /// What the Music Producer chose, or why it couldn't help.
     @Published var producerNote: String?
+    /// Changes whenever the taste profile does, so views showing it refresh.
+    @Published var tasteVersion = 0
 
     private let defaults = UserDefaults.standard
     private let gate = GenerationGate()
@@ -94,6 +96,9 @@ final class AppModel: ObservableObject {
         if let d = try? Data(contentsOf: sampleIndexURL), let idx = try? JSONDecoder().decode(SampleIndex.self, from: d) {
             sampleIndex = idx
             BeatsLibrary.shared.index = idx
+        }
+        if let d = try? Data(contentsOf: tasteURL), let t = try? JSONDecoder().decode(TasteProfile.self, from: d) {
+            BeatsLibrary.shared.taste = t
         }
         if sessions.isEmpty { newSession() } else { selectedID = sessions.first?.id }
     }
@@ -310,13 +315,15 @@ final class AppModel: ObservableObject {
         producerNote = nil
         if !sampleIndex.isEmpty {
             // The AI producer when one is set up; the built-in one (no AI) when it's off or can't answer.
-            var plan = BeatProducer.builtIn(goal: s.goal, kits: sampleIndex.drumKits)
+            let taste = BeatsLibrary.shared.taste
+            var plan = BeatProducer.builtIn(goal: s.goal, kits: sampleIndex.drumKits, taste: taste)
             var who = "Built-in producer (no AI)"
             var fellBack: String?
             if team.assignment(.producer).backend != .mock {
                 let agent = provider(for: .producer)
                 do {
-                    plan = try await BeatProducer.plan(goal: s.goal, index: sampleIndex, constraints: s.constraints, using: agent)
+                    plan = try await BeatProducer.plan(goal: s.goal, index: sampleIndex, constraints: s.constraints,
+                                                       using: agent, taste: taste)
                     who = "Music Producer (\(agent.name))"
                 } catch {
                     fellBack = error.localizedDescription
@@ -634,6 +641,34 @@ final class AppModel: ObservableObject {
     // MARK: - Sounds
 
     var sampleIndexURL: URL { store.root.appendingPathComponent("SampleIndex.json") }
+    var tasteURL: URL { store.root.appendingPathComponent("Taste.json") }
+
+    /// Like (+1) or "not for me" (-1) on a beat. Pressing the same one again clears it.
+    /// Teaches the local taste profile which sounds, kits and dial positions you like.
+    func rateBeat(_ snapshotID: UUID, _ rating: Int) {
+        guard let s = current, let snap = s.snapshots.first(where: { $0.id == snapshotID }) else { return }
+        let old = snap.output.rating ?? 0
+        let new = old == rating ? 0 : rating
+        updateSession(s.id) { session in
+            if let i = session.snapshots.firstIndex(where: { $0.id == snapshotID }) {
+                session.snapshots[i].output.rating = new == 0 ? nil : new
+            }
+        }
+        let paths = snap.output.samples ?? []
+        let groups = paths.compactMap { p in sampleIndex.files.first { $0.path == p }?.group }
+        var taste = BeatsLibrary.shared.taste
+        taste.rate(samples: paths, kits: groups, style: BeatsAdapter.style(for: snap.state).id,
+                   dials: BeatParameters(dials: snap.state.dials), from: old, to: new)
+        BeatsLibrary.shared.taste = taste
+        if let d = try? JSONEncoder().encode(taste) { try? d.write(to: tasteURL, options: .atomic) }
+        tasteVersion += 1
+    }
+
+    func forgetTaste() {
+        BeatsLibrary.shared.taste = TasteProfile()
+        try? FileManager.default.removeItem(at: tasteURL)
+        tasteVersion += 1
+    }
 
     func addSoundFolders() {
         let panel = NSOpenPanel()

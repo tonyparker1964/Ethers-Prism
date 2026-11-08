@@ -155,3 +155,39 @@ final class BuiltInProducerTests: XCTestCase {
         XCTAssertTrue(plain.kits.isEmpty)
     }
 }
+
+final class TasteTests: XCTestCase {
+    func testRatingsAreLearnedAndCanBeUndone() {
+        var t = TasteProfile()
+        let p = BeatParameters(tempo: 0.3, swing: 0.6, density: 0.4, variation: 0.2, tone: 0.3, bass: 0.7)
+        t.rate(samples: ["/a/kick.wav"], kits: ["Alpha"], style: "lofi", dials: p, from: 0, to: 1)
+        XCTAssertEqual(t.score(sample: "/a/kick.wav"), 1)
+        XCTAssertTrue(t.likedDials(style: "lofi").isEmpty, "needs two liked beats")
+        t.rate(samples: ["/a/snare.wav"], kits: ["Alpha"], style: "lofi", dials: p, from: 0, to: 1)
+        XCTAssertEqual(t.likedDials(style: "lofi")["tempo"], 30)
+        XCTAssertEqual(t.likedKits, ["Alpha"])
+        // Changing a like to "not for me" undoes the like first.
+        t.rate(samples: ["/a/snare.wav"], kits: ["Alpha"], style: "lofi", dials: p, from: 1, to: -1)
+        XCTAssertEqual(t.score(sample: "/a/snare.wav"), -1)
+        XCTAssertTrue(t.likedDials(style: "lofi").isEmpty)
+    }
+
+    func testDislikedSoundsAndKitsAreLeftOut() {
+        let files = [
+            SampleFile(path: "/x/Alpha/Kick 1.wav", role: .kick, group: "Alpha"),
+            SampleFile(path: "/x/Alpha/Kick 2.wav", role: .kick, group: "Alpha"),
+            SampleFile(path: "/x/Alpha/Snare.wav", role: .snare, group: "Alpha"),
+            SampleFile(path: "/x/Beta/Kick.wav", role: .kick, group: "Beta"),
+            SampleFile(path: "/x/Beta/Snare.wav", role: .snare, group: "Beta")
+        ]
+        let index = SampleIndex(roots: ["/x"], files: files)
+        var t = TasteProfile()
+        t.rate(samples: ["/x/Alpha/Kick 1.wav"], kits: [], style: "x", dials: BeatParameters(), from: 0, to: -1)
+        for seed in UInt64(1)...20 {
+            XCTAssertEqual(BeatsAdapter.choose(from: index, goal: "x", constraints: [], kit: 0, seed: seed, taste: t)[.kick]?.path,
+                           "/x/Alpha/Kick 2.wav")
+        }
+        t.rate(samples: [], kits: ["Alpha"], style: "x", dials: BeatParameters(), from: 0, to: -1)
+        XCTAssertEqual(BeatsAdapter.choose(from: index, goal: "x", constraints: [], kit: 0, seed: 1, taste: t)[.kick]?.group, "Beta")
+    }
+}

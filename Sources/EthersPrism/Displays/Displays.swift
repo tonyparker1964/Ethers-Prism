@@ -20,7 +20,7 @@ struct ResultDisplay: View {
         case .image:
             ImageResultView(output: snapshot.output)
         case .audio:
-            AudioResultView(output: snapshot.output)
+            AudioResultView(output: snapshot.output, snapshotID: snapshot.id)
         }
     }
 }
@@ -271,6 +271,7 @@ struct AudioResultView: View {
     @ObservedObject private var player = BeatPlayer.shared
     @AppStorage("beatLoop") private var loop = true
     let output: Output
+    var snapshotID: UUID?
     var compact = false
     @State private var peaks: [Float] = []
 
@@ -291,6 +292,17 @@ struct AudioResultView: View {
                     }
                     if !compact {
                         Toggle("Loop", isOn: $loop).toggleStyle(.switch).controlSize(.small)
+                        if let id = snapshotID {
+                            Divider().frame(height: 16)
+                            Button { model.rateBeat(id, 1) } label: {
+                                Label("Like", systemImage: output.rating == 1 ? "hand.thumbsup.fill" : "hand.thumbsup")
+                            }
+                            .help("Teach Prism: more sounds and settings like this")
+                            Button { model.rateBeat(id, -1) } label: {
+                                Label("Not for me", systemImage: output.rating == -1 ? "hand.thumbsdown.fill" : "hand.thumbsdown")
+                            }
+                            .help("Teach Prism: fewer sounds like these")
+                        }
                         Spacer()
                         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                     }

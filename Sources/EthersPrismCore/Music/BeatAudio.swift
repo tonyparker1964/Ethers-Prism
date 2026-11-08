@@ -148,11 +148,63 @@ public enum BeatMixer {
         var pan: Float
     }
 
+    /// Every sample is first brought to the same peak level, so these set the balance of the kit.
     static let voices: [SampleRole: Voice] = [
-        .kick: Voice(gain: 1.0, pan: 0), .snare: Voice(gain: 0.85, pan: 0.04), .clap: Voice(gain: 0.75, pan: -0.04),
-        .closedHat: Voice(gain: 0.42, pan: 0.18), .openHat: Voice(gain: 0.4, pan: -0.18), .perc: Voice(gain: 0.45, pan: -0.3),
-        .tom: Voice(gain: 0.7, pan: 0.25), .cymbal: Voice(gain: 0.45, pan: 0.1), .bass: Voice(gain: 0.8, pan: 0)
+        .kick: Voice(gain: 1.0, pan: 0), .snare: Voice(gain: 0.78, pan: 0.04), .clap: Voice(gain: 0.62, pan: -0.04),
+        .closedHat: Voice(gain: 0.3, pan: 0.16), .openHat: Voice(gain: 0.26, pan: -0.16), .perc: Voice(gain: 0.3, pan: -0.28),
+        .tom: Voice(gain: 0.55, pan: 0.22), .cymbal: Voice(gain: 0.22, pan: 0.1), .bass: Voice(gain: 0.72, pan: 0)
     ]
+    /// The longest each kind of sound may ring, in seconds. Long tails are what make a beat sound messy.
+    static let maxSeconds: [SampleRole: Double] = [.kick: 0.9, .snare: 0.7, .clap: 0.7, .closedHat: 0.3, .openHat: 1.0,
+                                                   .perc: 0.6, .tom: 0.8, .cymbal: 2.0, .bass: 3.0]
+    /// Low end removed from everything except kick and bass, so they own the bottom of the mix.
+    static let highPass: [SampleRole: Double] = [.snare: 100, .clap: 140, .closedHat: 350, .openHat: 300,
+                                                 .perc: 150, .tom: 60, .cymbal: 300]
+
+    /// Gets a raw sample ready to play: skips silence before the hit (so it lands on time), levels it,
+    /// cuts its tail to a sensible length and clears out low end that would muddy the kick and bass.
+    public static func prepare(_ audio: StereoAudio, role: SampleRole) -> StereoAudio {
+        let sr = BeatAudio.sampleRate
+        var peak: Float = 0
+        for i in 0..<audio.frames { peak = max(peak, abs(audio.left[i]), abs(audio.right[i])) }
+        guard peak > 0.0001 else { return audio }
+        let threshold = peak * 0.02
+        var start = 0
+        while start < audio.frames, abs(audio.left[start]) < threshold, abs(audio.right[start]) < threshold { start += 1 }
+        start = max(0, start - Int(sr * 0.001))
+        let end = min(audio.frames, start + Int(sr * (maxSeconds[role] ?? 1)))
+        guard end > start else { return audio }
+        var l = Array(audio.left[start..<end])
+        var r = Array(audio.right[start..<end])
+        let n = l.count
+        let gain = 1 / peak
+        let fade = max(1, min(n, Int(sr * 0.015)))
+        let cutoff = highPass[role] ?? 0
+        let k: Float = cutoff > 0 ? Float(exp(-2 * Double.pi * cutoff / sr)) : 0
+        var lastXL: Float = 0, lastYL: Float = 0, lastXR: Float = 0, lastYR: Float = 0
+        for i in 0..<n {
+            var xl = l[i] * gain
+            var xr = r[i] * gain
+            if cutoff > 0 {
+                let yl = k * (lastYL + xl - lastXL)
+                lastXL = xl
+                lastYL = yl
+                xl = yl
+                let yr = k * (lastYR + xr - lastXR)
+                lastXR = xr
+                lastYR = yr
+                xr = yr
+            }
+            if i >= n - fade {
+                let env = Float(n - i) / Float(fade)
+                xl *= env
+                xr *= env
+            }
+            l[i] = xl
+            r[i] = xr
+        }
+        return StereoAudio(left: l, right: r)
+    }
 
     /// `sounds` maps each role to decoded audio; a missing bass is played by a simple sine sub.
     public static func mix(_ plan: BeatPlan, sounds: [SampleRole: StereoAudio], tone: Double) -> StereoAudio {
@@ -161,6 +213,11 @@ public enum BeatMixer {
         let total = Int(Double(plan.steps) * stepFrames + sr * 1.5)
         var left = [Float](repeating: 0, count: total)
         var right = [Float](repeating: 0, count: total)
+        // Bass gets its own buffer so it can step aside each time the kick hits.
+        var bassL = [Float](repeating: 0, count: total)
+        var bassR = [Float](repeating: 0, count: total)
+        var sounds = sounds
+        for (role, audio) in sounds { sounds[role] = prepare(audio, role: role) }
 
         // An open hat stops when the next closed hat plays, like on a real kit.
         let closedTimes = plan.events.filter { $0.role == .closedHat }.map(\.time)
@@ -173,7 +230,7 @@ public enum BeatMixer {
             let lg = g * min(1, 1 - voice.pan), rg = g * min(1, 1 + voice.pan)
 
             if e.role == .bass, sounds[.bass] == nil {
-                synthSub(into: &left, &right, start: start, frames: Int(e.length * stepFrames),
+                synthSub(into: &bassL, &bassR, start: start, frames: Int(e.length * stepFrames),
                          semitones: e.semitones, gain: g)
                 continue
             }
@@ -202,9 +259,29 @@ public enum BeatMixer {
                     l *= env
                     r *= env
                 }
-                left[start + i] += l * lg
-                right[start + i] += r * rg
+                if e.role == .bass {
+                    bassL[start + i] += l * lg
+                    bassR[start + i] += r * rg
+                } else {
+                    left[start + i] += l * lg
+                    right[start + i] += r * rg
+                }
             }
+        }
+
+        // Ducking: the bass dips for a moment under every kick, so the two don't blur into mud.
+        let kickFrames = plan.events.filter { $0.role == .kick }.map { Int($0.time * stepFrames) }
+        let release = Int(sr * 0.12)
+        var duck = [Float](repeating: 1, count: total)
+        for k in kickFrames where k < total {
+            for i in 0..<min(release, total - k) {
+                let v = 0.4 + 0.6 * Float(i) / Float(release)
+                duck[k + i] = min(duck[k + i], v)
+            }
+        }
+        for i in 0..<total {
+            left[i] += bassL[i] * duck[i]
+            right[i] += bassR[i] * duck[i]
         }
 
         // Tone: a gentle low-pass that opens fully at the bright end.
@@ -220,14 +297,16 @@ public enum BeatMixer {
             }
         }
 
-        // Even loudness: peaks land just under full scale.
+        // Even loudness, then a gentle soft limiter that rounds off peaks instead of clipping them.
         var peak: Float = 0
         for i in 0..<total { peak = max(peak, abs(left[i]), abs(right[i])) }
         if peak > 0.0001 {
-            let scale = 0.89 / peak
+            let scale = 1 / peak
+            let drive: Float = 1.6
+            let norm = 0.92 / tanh(drive)
             for i in 0..<total {
-                left[i] *= scale
-                right[i] *= scale
+                left[i] = tanh(left[i] * scale * drive) * norm
+                right[i] = tanh(right[i] * scale * drive) * norm
             }
         }
         return StereoAudio(left: left, right: right)
@@ -243,11 +322,11 @@ public enum BeatMixer {
         var phase = 0.0
         for i in 0..<n {
             let t = Double(i) / sr
-            let f = freq * (1 + 1.5 * exp(-t * 60))
+            let f = freq * (1 + 0.5 * exp(-t * 70))
             phase += 2 * Double.pi * f / sr
             let env = exp(-t * 2.2) * (i > frames ? Double(n - i) / Double(max(1, n - frames)) : 1)
             let attack = min(1, Double(i) / (sr * 0.003))
-            let v = Float(tanh(sin(phase) * 1.4) * env * attack) * gain * 0.9
+            let v = Float(tanh(sin(phase) * 1.2) * env * attack) * gain * 0.9
             left[start + i] += v
             right[start + i] += v
         }
