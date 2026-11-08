@@ -13,13 +13,13 @@ Needs macOS 14 or later, Xcode 15 or later, Apple Silicon.
 1. Double-click `Package.swift` to open it in Xcode.
 2. Choose the **EthersPrism** scheme and **My Mac**, then press **⌘R** to run. Press **⌘U** to run the tests.
 
-From Terminal: `swift run EthersPrism` and `swift test`.
+After building once, you can also start it by double-clicking **Ethers Prism.app** in this folder. It launches your latest Xcode build. From Terminal: `swift run EthersPrism` and `swift test`.
 
 ## Providers (Settings, ⌘,)
 
 - **Text:** Anthropic (Claude) or Mock. Paste an API key from console.anthropic.com. It is stored in your Keychain and never written to sessions or exports. The model name is editable.
 - **Images:**
-  - **ComfyUI on this Mac:** start your instance, enter its address (Comfy Desktop usually uses `http://127.0.0.1:8000`, plain ComfyUI `8188`), press *Check Connection* and pick a model. Claude writes the image prompt and ComfyUI renders it. Previews are smaller with fewer steps, so they really are faster, and they share a seed with the full render.
+  - **ComfyUI on this Mac:** start your instance, enter its address (often `http://127.0.0.1:8188`; some Comfy Desktop setups use `8000`), press *Check Connection* and pick a model. For SDXL Turbo use about 2 preview steps, 6 render steps and CFG 1. Claude writes the image prompt and ComfyUI renders it. Previews are smaller with fewer steps, so they really are faster, and they share a seed with the full render.
   - **Claude SVG drawing:** vector drawings by Claude. A preview costs about the same as a render.
   - **Mock:** placeholder images for testing.
 - **Mock** providers are always labeled in the app, so you can't mistake them for real results.

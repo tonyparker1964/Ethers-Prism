@@ -1,0 +1,8 @@
+#!/bin/sh
+# Launches the latest Xcode build of Ethers Prism.
+BIN=$(ls -t "$HOME"/Library/Developer/Xcode/DerivedData/EthersPrism-*/Build/Products/Debug/EthersPrism 2>/dev/null | head -1)
+if [ ! -x "$BIN" ]; then
+  osascript -e 'display alert "Ethers Prism" message "Build the EthersPrism scheme in Xcode first."'
+  exit 1
+fi
+exec "$BIN"

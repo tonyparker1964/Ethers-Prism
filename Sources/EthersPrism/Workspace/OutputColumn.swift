@@ -47,19 +47,30 @@ struct OutputColumn: View {
     private var toolbar: some View {
         HStack(spacing: 10) {
             if let snap = model.current?.currentSnapshot {
-                Label(snap.origin.label, systemImage: icon(for: snap.origin)).font(.subheadline)
-                Text(snap.createdAt, style: .time).font(.subheadline).foregroundStyle(.secondary)
-                Text(snap.output.provider).font(.caption).foregroundStyle(.secondary)
-                    .help("Model: \(snap.output.model)")
+                Image(systemName: icon(for: snap.origin)).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 4) {
+                        Text(snap.origin.label)
+                        Text("·")
+                        Text(snap.createdAt, style: .time)
+                    }
+                    .font(.subheadline)
+                    Text(snap.output.provider)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .lineLimit(1)
+                .fixedSize()
+                .help("Model: \(snap.output.model)")
             } else {
                 Text("No result yet").foregroundStyle(.secondary)
             }
             if case .working(let what) = model.phase {
                 ProgressView().controlSize(.small)
-                Text(what).font(.caption).foregroundStyle(.secondary)
+                Text(what).font(.caption).foregroundStyle(.secondary).lineLimit(1).fixedSize()
                 Button("Cancel") { model.cancelGeneration() }.controlSize(.small)
             }
-            Spacer()
+            Spacer(minLength: 8)
             Menu {
                 ForEach(model.current?.dials ?? []) { d in
                     Button(d.locked ? "\(d.name) (locked: unlock to sweep)" : d.name) { model.sweep(dialID: d.id) }
@@ -72,6 +83,8 @@ struct OutputColumn: View {
             .help("Five previews of one dial at 0, 25, 50, 75 and 100")
             .disabled(model.current?.dials.isEmpty ?? true)
             Button { model.showCompare = true } label: { Label("Compare", systemImage: "rectangle.split.2x1") }
+                .labelStyle(.iconOnly)
+                .help("Compare two states side by side")
                 .disabled((model.current?.snapshots.count ?? 0) < 2)
             Button { model.toggleChosen() } label: {
                 Image(systemName: model.current?.currentSnapshot?.chosen == true ? "star.fill" : "star")

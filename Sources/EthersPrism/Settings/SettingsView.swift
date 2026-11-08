@@ -81,7 +81,7 @@ struct SettingsView: View {
                     }
                     TextField("Sampler", text: $model.comfy.sampler)
                     TextField("Scheduler", text: $model.comfy.scheduler)
-                    Text("Comfy Desktop usually listens on port 8000; a plain ComfyUI install on 8188. Your ComfyUI instance must be running. Flux models usually work best with CFG 1.")
+                    Text("ComfyUI usually listens on port 8188 (some Comfy Desktop setups use 8000). Your ComfyUI instance must be running. Flux models usually work best with CFG 1.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
