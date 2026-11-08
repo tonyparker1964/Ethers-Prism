@@ -60,6 +60,12 @@ final class AppModel: ObservableObject {
     @Published var mixarStatus: String?
     private var mixarClient: StdioMCPClient?
 
+    // Sounds for the Beats field
+    @Published var soundFolders: [String] { didSet { defaults.set(soundFolders, forKey: "soundFolders") } }
+    @Published var sampleIndex = SampleIndex()
+    @Published var scanning = false
+    @Published var scanStatus: String?
+
     private let defaults = UserDefaults.standard
     private let gate = GenerationGate()
     private let sweepGate = GenerationGate()
@@ -80,8 +86,13 @@ final class AppModel: ObservableObject {
         } else {
             comfy = ComfyUISettings()
         }
+        soundFolders = UserDefaults.standard.stringArray(forKey: "soundFolders") ?? []
         sessions = store.loadAll()
         templates = store.loadTemplates()
+        if let d = try? Data(contentsOf: sampleIndexURL), let idx = try? JSONDecoder().decode(SampleIndex.self, from: d) {
+            sampleIndex = idx
+            BeatsLibrary.shared.index = idx
+        }
         if sessions.isEmpty { newSession() } else { selectedID = sessions.first?.id }
     }
 
@@ -121,6 +132,8 @@ final class AppModel: ObservableObject {
 
     /// The agents the current field actually uses.
     var activeRoles: [AgentRole] {
+        // Beats are made from your samples directly; no agent is involved.
+        if adapter.id == "beats" { return [] }
         var roles: [AgentRole] = [.dialDesigner]
         if adapter.capabilities.needsImageProvider { roles.append(.artDirector) }
         else if adapter.capabilities.kind == .code { roles.append(.coder) }
@@ -131,6 +144,9 @@ final class AppModel: ObservableObject {
 
     /// A setup step that is still missing for the current field, in plain words.
     var configurationIssue: String? {
+        if adapter.id == "beats" {
+            return sampleIndex.isEmpty ? "Add your sample folders in Settings → Sounds, then press Scan." : nil
+        }
         let needKey = activeRoles.filter { team.assignment($0).backend == .anthropic }
         if !needKey.isEmpty && !hasAPIKey {
             return "\(needKey.map(\.title).joined(separator: ", ")) use Claude, but no Anthropic API key is set. Add one in Settings → Agents, or switch those agents to LM Studio."
@@ -329,8 +345,12 @@ final class AppModel: ObservableObject {
                 guard let self, self.gate.isCurrent(ticket) else { return }
                 var output = generated.output
                 if let data = generated.asset {
+                    let name = UUID().uuidString
                     output.assetPath = try store.saveAsset(data, ext: generated.assetExtension ?? "bin",
-                                                           sessionID: sessionID, name: UUID().uuidString)
+                                                           sessionID: sessionID, name: name)
+                    for (ext, extra) in generated.extraAssets {
+                        _ = try store.saveAsset(extra, ext: ext, sessionID: sessionID, name: name)
+                    }
                 }
                 var snapID: UUID?
                 self.updateSession(sessionID) {
@@ -406,8 +426,12 @@ final class AppModel: ObservableObject {
                     guard let self, self.sweepGate.isCurrent(ticket), self.sweepItems.indices.contains(i) else { return }
                     var output = generated.output
                     if let data = generated.asset {
+                        let name = "sweep-\(UUID().uuidString)"
                         output.assetPath = try store.saveAsset(data, ext: generated.assetExtension ?? "bin",
-                                                               sessionID: sessionID, name: "sweep-\(UUID().uuidString)")
+                                                               sessionID: sessionID, name: name)
+                        for (ext, extra) in generated.extraAssets {
+                            _ = try store.saveAsset(extra, ext: ext, sessionID: sessionID, name: name)
+                        }
                     }
                     self.sweepItems[i].output = output
                 } catch {
@@ -443,7 +467,9 @@ final class AppModel: ObservableObject {
     func copyResult() {
         guard let out = current?.currentSnapshot?.output else { return }
         NSPasteboard.general.clearContents()
-        if let text = out.text {
+        if out.kind == .audio, let url = assetURL(out) {
+            NSPasteboard.general.writeObjects([url as NSURL])
+        } else if let text = out.text {
             NSPasteboard.general.setString(text, forType: .string)
         } else if let url = assetURL(out), let img = NSImage(contentsOf: url) {
             NSPasteboard.general.writeObjects([img])
@@ -467,6 +493,11 @@ final class AppModel: ObservableObject {
         do {
             if let file = Exporter.resultFile(snap, store: store) {
                 try file.data.write(to: dir.appendingPathComponent("\(base) — result.\(file.ext)"), options: .atomic)
+            }
+            // A beat also comes with its MIDI file, for use in Maschine, Logic or any DAW.
+            if snap.output.kind == .audio, let url = assetURL(snap.output),
+               let midi = try? Data(contentsOf: url.deletingPathExtension().appendingPathExtension("mid")) {
+                try midi.write(to: dir.appendingPathComponent("\(base) — beat.mid"), options: .atomic)
             }
             try store.exportData(s).write(to: dir.appendingPathComponent("\(base) — session.json"), options: .atomic)
             try Exporter.authorshipLog(s, adapterName: adapter.name)
@@ -544,6 +575,53 @@ final class AppModel: ObservableObject {
 
     func assignmentBinding(_ role: AgentRole) -> Binding<AgentAssignment> {
         Binding(get: { self.team.assignment(role) }, set: { self.team.set($0) })
+    }
+
+    // MARK: - Sounds
+
+    var sampleIndexURL: URL { store.root.appendingPathComponent("SampleIndex.json") }
+
+    func addSoundFolders() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Add"
+        panel.message = "Choose folders with your samples, for example your Native Instruments drive or its Maschine expansions folder."
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls where !soundFolders.contains(url.path) { soundFolders.append(url.path) }
+        scanSounds()
+    }
+
+    func removeSoundFolder(_ path: String) {
+        soundFolders.removeAll { $0 == path }
+        scanSounds()
+    }
+
+    /// Reads every folder in the background and saves the result, so the next launch doesn't rescan.
+    func scanSounds() {
+        guard !scanning else { return }
+        let missing = soundFolders.filter { !FileManager.default.fileExists(atPath: $0) }
+        scanning = true
+        scanStatus = "Scanning… big libraries can take a minute."
+        let roots = soundFolders.filter { FileManager.default.fileExists(atPath: $0) }.map { URL(fileURLWithPath: $0) }
+        let indexURL = sampleIndexURL
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let idx = SampleScanner.scan(roots: roots)
+            if let d = try? JSONEncoder().encode(idx) { try? d.write(to: indexURL, options: .atomic) }
+            BeatsLibrary.shared.index = idx
+            await MainActor.run {
+                guard let self else { return }
+                self.sampleIndex = idx
+                self.scanning = false
+                var status = "Found \(idx.files.count) samples in \(idx.groups.count) kits."
+                if idx.lockedCount > 0 {
+                    status += " Skipped \(idx.lockedCount) files in Native Instruments' locked formats (those play only inside Kontakt or Maschine)."
+                }
+                if !missing.isEmpty { status += " Not connected: \(missing.joined(separator: ", "))." }
+                self.scanStatus = status
+            }
+        }
     }
 
     // MARK: - Mixar

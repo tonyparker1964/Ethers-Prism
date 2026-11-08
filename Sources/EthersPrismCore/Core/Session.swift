@@ -1,7 +1,7 @@
 import Foundation
 
 public enum OutputKind: String, Codable, Hashable, Sendable {
-    case text, code, image, storyboard
+    case text, code, image, storyboard, audio
 }
 
 public enum Quality: String, Codable, Hashable, Sendable {

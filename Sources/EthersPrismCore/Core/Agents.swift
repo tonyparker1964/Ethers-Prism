@@ -130,6 +130,8 @@ public enum Checker {
 
     /// Nil when there is nothing to check against.
     public static func request(for output: Output, constraints: [Constraint]) -> TextRequest? {
+        // A beat's requirements are applied to sample choice directly; there's no text to review.
+        if output.kind == .audio { return nil }
         let fixed = Compiler.describe(constraints)
         let content = output.text ?? output.imagePrompt
         guard !fixed.isEmpty, let content, !content.trimmed.isEmpty else { return nil }

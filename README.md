@@ -4,7 +4,7 @@
 
 Describe a goal and Ethers Prism builds you an editor: dials with named ends, plus fixed requirements. Move the dials, watch previews change, sweep one dial across its range, branch through history, compare states, render the version you choose, and export it with an authorship log. Choosing and editing the dials is part of the authorship.
 
-Text and Image are fully working. Video (storyboards), Music (written sketches), Code (previews) and Research (plans) are labeled unfinished.
+Text, Image, 3D Stage and Beats are fully working. Video (storyboards), Music Sketch (written sketches), Code (previews) and Research (plans) are labeled unfinished.
 
 ## Setup
 
@@ -36,6 +36,18 @@ Each agent can use Claude (Anthropic), LM Studio, Ollama or Mock. Agents that mu
 ## Mixar (Settings → Mixar)
 
 Mixar is an AI 3D editor built on Blender. Ethers Prism connects through Mixar's **Connect MCP** (profile menu → Connect MCP → Turn on) and lists Mixar's tools. Inspecting and rendering in Mixar are free; Mixar's AI generation costs Mixar credits. The **3D Stage (Blender)** field is the free, local alternative: type the path to a GLB, GLTF, OBJ or FBX file as the goal (or anything else for a sample model). Its dials set camera orbit, height, lens, lighting contrast and mood. Previews render with Eevee, full renders with Cycles on the GPU; the first Cycles render compiles GPU code and is slow, later ones are fast.
+
+## Beats (Settings → Sounds)
+
+The **Beats (your samples)** field makes real audio from your own one-shot samples: Native Instruments Maschine expansions, Battery kits and any folders of WAV, AIFF or FLAC files. No AI and no internet are involved, and the same dials always give the same beat.
+
+1. **Settings → Sounds → Add Folders…** and pick the drive or folders with your samples, for example the Native Instruments drive. The scan sorts every file into kick, snare, clap, closed hat, open hat, percussion, tom, cymbal or bass by its name and folders, and groups files by kit or expansion. Loops, FX and vocals are skipped. The result is saved, so the next launch doesn't rescan.
+2. Pick the **Beats** field and type a goal that names a style: *boom bap*, *trap*, *house*, *techno*, *drum and bass*, *lo-fi*, *afro / amapiano* or *reggaeton*. Add a kit or expansion name to use only that kit (for example "dusty lo-fi with Lazer Dice").
+3. **Suggest Dials** gives Tempo, Swing, Density, Variation, Tone, Bass, Kit and Pattern. Previews are 4 bars; **Render Full Quality** makes 16 bars with fills. Sweep the **Kit** dial to hear the same groove through five different kits.
+4. **Fixed requirements:** *Must include* limits the beat to kits with that name; *Must avoid* leaves out any sample whose name or folder contains those words.
+5. **Export** writes the WAV, a MIDI file of the same beat (General MIDI drums on channel 10, bass on channel 2) for Maschine, Logic or any DAW, the session file and the authorship log.
+
+Kontakt instruments store their samples in Native Instruments' locked formats (.ncw, .nkx). Those only play inside Kontakt, so the scan counts and skips them. If a kit has no bass samples, a simple built-in sine sub plays the bassline.
 
 ## Providers (Settings, ⌘,)
 

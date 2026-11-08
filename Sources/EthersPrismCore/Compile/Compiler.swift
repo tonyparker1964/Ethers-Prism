@@ -196,7 +196,7 @@ public enum OutputCleaner {
         switch kind {
         case .image:
             return svgBody(t) ?? t
-        case .code, .text, .storyboard:
+        case .code, .text, .storyboard, .audio:
             return stripFences(t)
         }
     }
