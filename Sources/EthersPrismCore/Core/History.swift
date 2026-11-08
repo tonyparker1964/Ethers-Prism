@@ -39,6 +39,8 @@ extension Session {
         guard let cur = currentSnapshot, cur.output.text != nil, cur.output.text != text else { return nil }
         var out = cur.output
         out.text = text
+        out.review = nil
+        out.agent = "You (hand edit)"
         return recordChild(of: cur.id, out, origin: .manualEdit, state: cur.state, note: nil, date: date)
     }
 
@@ -208,6 +210,8 @@ public enum PrismError: LocalizedError, Equatable {
     case dialNotFound
     case unsupportedVersion(Int)
     case invalidFile(String)
+    case local(String)
+    case mixar(String)
 
     public var errorDescription: String? {
         switch self {
@@ -231,6 +235,10 @@ public enum PrismError: LocalizedError, Equatable {
             return "This file was made by a newer version of Ethers Prism (format \(v))."
         case .invalidFile(let why):
             return "This file can't be opened: \(why)"
+        case .local(let message):
+            return message
+        case .mixar(let message):
+            return "Mixar: \(message)"
         }
     }
 }

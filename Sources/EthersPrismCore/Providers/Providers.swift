@@ -40,14 +40,20 @@ public protocol ImageProvider: Sendable {
     func generate(_ job: ImageJob) async throws -> ImageResult
 }
 
+/// The providers for one generation. Each agent role can have its own text provider;
+/// roles without one fall back to `text`.
 public struct ProviderSet: Sendable {
     public var text: any TextProvider
     public var image: (any ImageProvider)?
+    public var agents: [AgentRole: any TextProvider]
 
-    public init(text: any TextProvider, image: (any ImageProvider)?) {
+    public init(text: any TextProvider, image: (any ImageProvider)?, agents: [AgentRole: any TextProvider] = [:]) {
         self.text = text
         self.image = image
+        self.agents = agents
     }
+
+    public func text(for role: AgentRole) -> any TextProvider { agents[role] ?? text }
 }
 
 // MARK: - Anthropic (Claude)
@@ -280,6 +286,10 @@ public struct MockTextProvider: TextProvider {
     public func complete(_ request: TextRequest) async throws -> String {
         try await Task.sleep(nanoseconds: 200_000_000)
         let seed = Compiler.seed(for: request.user)
+        if request.system.contains(Checker.marker) {
+            let flagged = request.user.lowercased().contains("must avoid: mock")
+            return flagged ? #"{"passes": false, "issues": ["Mentions MOCK"]}"# : #"{"passes": true, "issues": []}"#
+        }
         if request.system.contains(DialSuggester.marker) {
             return """
             [{"name":"Detail","detail":"How much is included.","low":"bare essentials","high":"richly detailed"},

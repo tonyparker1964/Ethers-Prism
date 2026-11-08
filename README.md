@@ -15,15 +15,36 @@ Needs macOS 14 or later, Xcode 15 or later, Apple Silicon.
 
 After building once, you can also start it by double-clicking **Ethers Prism.app** in this folder. It launches your latest Xcode build. From Terminal: `swift run EthersPrism` and `swift test`.
 
+## Agents (Settings → Agents)
+
+Each job has its own agent and model. You still choose the dials and the results; agents only do the job they're given.
+
+| Agent | Job | Default |
+|---|---|---|
+| Dial Designer | Proposes dials for a goal | LM Studio · Qwen3 8B |
+| Writer | Text, music sketches, storyboards, research plans | LM Studio · Qwen3 8B |
+| Art Director | Turns dials and requirements into image prompts | LM Studio · Qwen3 8B |
+| Coder | The Code field | LM Studio · Qwen3 Coder 30B |
+| Checker | Reviews each result against the fixed requirements; flags with quoted evidence, never rewrites | LM Studio · Qwen3 8B |
+
+Each agent can use Claude (Anthropic), LM Studio, Ollama or Mock. Agents that must return data (dials, image prompts, reviews) ask local servers for JSON-schema output, and small slips are repaired.
+
+**Memory hand-off:** large local models (20B+) and ComfyUI can't share 24 GB. With hand-off on, ComfyUI releases its model before a large agent runs, and LM Studio unloads large models before ComfyUI renders. Small models stay loaded.
+
+**Models on an external drive:** point LM Studio's models folder at the drive (My Models → folder). Models load into memory once, so a fast SSD keeps loading quick.
+
+## Mixar (Settings → Mixar)
+
+Mixar is an AI 3D editor built on Blender. Ethers Prism connects through Mixar's **Connect MCP** (profile menu → Connect MCP → Turn on) and lists Mixar's tools. Inspecting and rendering in Mixar are free; Mixar's AI generation costs Mixar credits. The 3D stage (image → 3D → camera/lighting dials → consistent renders) is the next step.
+
 ## Providers (Settings, ⌘,)
 
-- **Text:** Anthropic (Claude) or Mock. Paste an API key from console.anthropic.com. It is stored in your Keychain and never written to sessions or exports. The model name is editable.
+- **Claude:** paste an API key from console.anthropic.com in Settings → Agents. It is stored in your Keychain and never written to sessions or exports.
 - **Images:**
   - **ComfyUI on this Mac:** start your instance, enter its address (often `http://127.0.0.1:8188`; some Comfy Desktop setups use `8000`), press *Check Connection* and pick a model. For SDXL Turbo use about 2 preview steps, 6 render steps and CFG 1. Claude writes the image prompt and ComfyUI renders it. Previews are smaller with fewer steps, so they really are faster, and they share a seed with the full render.
   - **Claude SVG drawing:** vector drawings by Claude. A preview costs about the same as a render.
   - **Mock:** placeholder images for testing.
 - **Mock** providers are always labeled in the app, so you can't mistake them for real results.
-- Ollama and LM Studio are planned and shown as not yet available.
 
 ## Using it
 

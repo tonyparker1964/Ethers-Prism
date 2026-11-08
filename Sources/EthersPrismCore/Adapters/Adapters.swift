@@ -53,7 +53,8 @@ public protocol DomainAdapter: Sendable {
 
 extension DomainAdapter {
     public func suggestDials(for goal: String, using providers: ProviderSet) async throws -> [Dial] {
-        let raw = try await providers.text.complete(DialSuggester.request(goal: goal, adapterName: name, hint: dialHint))
+        let raw = try await providers.text(for: .dialDesigner)
+            .complete(DialSuggester.request(goal: goal, adapterName: name, hint: dialHint))
         return try DialSuggester.parse(raw)
     }
 
@@ -77,9 +78,13 @@ public struct TextAdapter: DomainAdapter {
     public let format: String
     public let previewTokens: Int
     public let renderTokens: Int
+    /// Which agent does this field's work.
+    public let agent: AgentRole
 
     public init(id: String, name: String, symbol: String, status: AdapterStatus, capabilities: OutputCapabilities,
-                dialHint: String, role: String, format: String, previewTokens: Int, renderTokens: Int) {
+                dialHint: String, role: String, format: String, previewTokens: Int, renderTokens: Int,
+                agent: AgentRole = .writer) {
+        self.agent = agent
         self.id = id
         self.name = name
         self.symbol = symbol
@@ -107,10 +112,11 @@ public struct TextAdapter: DomainAdapter {
     }
 
     private func run(_ request: CompiledRequest, _ providers: ProviderSet) async throws -> Generated {
-        let raw = try await providers.text.complete(request.text)
+        let worker = providers.text(for: agent)
+        let raw = try await worker.complete(request.text)
         let text = OutputCleaner.clean(raw, kind: capabilities.kind)
-        return Generated(output: Output(kind: capabilities.kind, text: text,
-                                        provider: providers.text.name, model: providers.text.model))
+        return Generated(output: Output(kind: capabilities.kind, text: text, provider: worker.name,
+                                        model: worker.model, agent: agent.title))
     }
 }
 
@@ -135,7 +141,9 @@ public struct ImageAdapter: DomainAdapter {
             role: "\(Self.promptMarker) You are an art director who writes prompts for an image-generation model.",
             format: #"JSON only: {"prompt": "one rich, comma-separated visual description", "negative": "comma-separated things to keep out"}. Put every 'Must avoid' requirement into negative. Keep the prompt under 75 words."#,
             input: input, previewTokens: 400, renderTokens: 500)
-        return CompiledRequest(input: input, text: text, seed: Compiler.seed(for: text.user))
+        var withSchema = text
+        withSchema.schema = Schemas.imagePrompt
+        return CompiledRequest(input: input, text: withSchema, seed: Compiler.seed(for: text.user))
     }
 
     public func preview(_ request: CompiledRequest, using providers: ProviderSet) async throws -> Generated {
@@ -151,24 +159,31 @@ public struct ImageAdapter: DomainAdapter {
         public var negative: String?
     }
 
-    public static func parsePrompt(_ raw: String) -> ImagePrompt {
-        if let s = raw.firstIndex(of: "{"), let e = raw.lastIndex(of: "}"), s < e,
-           let p = try? JSONDecoder().decode(ImagePrompt.self, from: Data(raw[s...e].utf8)), !p.prompt.trimmed.isEmpty {
-            return p
+    public static func parsePrompt(_ input: String) -> ImagePrompt {
+        let raw = OutputCleaner.stripThinking(input)
+        if let s = raw.firstIndex(of: "{"), let e = raw.lastIndex(of: "}"), s < e {
+            let slice = String(raw[s...e])
+            for candidate in [slice, JSONRepair.repair(slice, keys: ["prompt", "negative"])] {
+                if let p = try? JSONDecoder().decode(ImagePrompt.self, from: Data(candidate.utf8)), !p.prompt.trimmed.isEmpty {
+                    return p
+                }
+            }
         }
         return ImagePrompt(prompt: OutputCleaner.stripFences(raw.trimmed), negative: nil)
     }
 
     private func run(_ request: CompiledRequest, _ providers: ProviderSet) async throws -> Generated {
         guard let imageProvider = providers.image else { throw PrismError.missingImageProvider }
-        let p = Self.parsePrompt(try await providers.text.complete(request.text))
+        let director = providers.text(for: .artDirector)
+        let p = Self.parsePrompt(try await director.complete(request.text))
         let avoid = request.input.state.constraints.filter { $0.isActive && $0.kind == .mustAvoid }.map(\.text)
         let negative = ([p.negative ?? ""] + avoid).map(\.trimmed).filter { !$0.isEmpty }.joined(separator: ", ")
         let result = try await imageProvider.generate(
             ImageJob(prompt: p.prompt, negative: negative, quality: request.input.quality, seed: request.seed))
         return Generated(
             output: Output(kind: .image, imagePrompt: p.prompt, provider: imageProvider.name,
-                           model: imageProvider.model, promptModel: "\(providers.text.name) \(providers.text.model)"),
+                           model: imageProvider.model, promptModel: "Art Director: \(director.name) \(director.model)",
+                           agent: "Art Director + Renderer"),
             asset: result.data, assetExtension: result.fileExtension)
     }
 }
@@ -215,7 +230,7 @@ public enum Domains {
         dialHint: "simplicity vs performance, safety, flexibility, dependencies, comment density",
         role: "You are a senior software engineer.",
         format: "A single code file with brief comments. No prose before or after.",
-        previewTokens: 1200, renderTokens: 6000)
+        previewTokens: 1200, renderTokens: 6000, agent: .coder)
 
     public static let research = TextAdapter(
         id: "research", name: "Research", symbol: "magnifyingglass",

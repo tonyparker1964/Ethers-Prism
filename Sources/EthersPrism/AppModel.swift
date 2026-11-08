@@ -42,8 +42,9 @@ final class AppModel: ObservableObject {
     @Published var sweepItems: [SweepItem] = []
 
     // Settings
-    @Published var textProviderKind: String { didSet { defaults.set(textProviderKind, forKey: "textProvider") } }
-    @Published var modelName: String { didSet { defaults.set(modelName, forKey: "modelName") } }
+    @Published var team: AgentTeam {
+        didSet { if let d = try? JSONEncoder().encode(team) { defaults.set(d, forKey: "agentTeam") } }
+    }
     @Published var imageProviderKind: String { didSet { defaults.set(imageProviderKind, forKey: "imageProvider") } }
     @Published var comfy: ComfyUISettings {
         didSet { if let d = try? JSONEncoder().encode(comfy) { defaults.set(d, forKey: "comfy") } }
@@ -51,6 +52,13 @@ final class AppModel: ObservableObject {
     @Published var hasAPIKey: Bool
     @Published var comfyModels: [String] = []
     @Published var comfyStatus: String?
+    @Published var localModels: [AgentBackend: [String]] = [:]
+    @Published var localStatus: [AgentBackend: String] = [:]
+
+    // Mixar
+    @Published var mixarTools: [MCPTool] = []
+    @Published var mixarStatus: String?
+    private var mixarClient: StdioMCPClient?
 
     private let defaults = UserDefaults.standard
     private let gate = GenerationGate()
@@ -61,8 +69,11 @@ final class AppModel: ObservableObject {
     init() {
         let key = Keychain.read(Self.keyAccount) ?? ""
         hasAPIKey = !key.isEmpty
-        textProviderKind = UserDefaults.standard.string(forKey: "textProvider") ?? (key.isEmpty ? "mock" : "anthropic")
-        modelName = UserDefaults.standard.string(forKey: "modelName") ?? "claude-sonnet-5-5"
+        if let d = UserDefaults.standard.data(forKey: "agentTeam"), let t = try? JSONDecoder().decode(AgentTeam.self, from: d) {
+            team = t
+        } else {
+            team = .local
+        }
         imageProviderKind = UserDefaults.standard.string(forKey: "imageProvider") ?? "mock"
         if let d = UserDefaults.standard.data(forKey: "comfy"), let c = try? JSONDecoder().decode(ComfyUISettings.self, from: d) {
             comfy = c
@@ -76,26 +87,57 @@ final class AppModel: ObservableObject {
 
     // MARK: - Providers
 
-    var textProvider: any TextProvider {
-        textProviderKind == "mock"
-            ? MockTextProvider()
-            : AnthropicTextProvider(apiKey: Keychain.read(Self.keyAccount) ?? "", model: modelName)
+    /// The text provider for one agent, wrapped so large local models and ComfyUI take turns with memory.
+    func provider(for role: AgentRole) -> any TextProvider {
+        let a = team.assignment(role)
+        let base: any TextProvider
+        switch a.backend {
+        case .anthropic: base = AnthropicTextProvider(apiKey: Keychain.read(Self.keyAccount) ?? "", model: a.model)
+        case .lmStudio: base = OpenAICompatibleTextProvider(name: "LM Studio", baseURL: team.lmStudioURL, model: a.model)
+        case .ollama: base = OpenAICompatibleTextProvider(name: "Ollama", baseURL: team.ollamaURL, model: a.model)
+        case .mock: base = MockTextProvider()
+        }
+        if team.memoryHandoff && a.backend.isLocal && imageProviderKind == "comfyui" {
+            return MemoryAwareTextProvider(inner: base, comfyURL: comfy.baseURL)
+        }
+        return base
     }
 
     var imageProvider: (any ImageProvider)? {
         switch imageProviderKind {
-        case "comfyui": return ComfyUIImageProvider(settings: comfy)
-        case "svg": return ClaudeSVGImageProvider(text: textProvider)
+        case "comfyui":
+            let comfyProvider = ComfyUIImageProvider(settings: comfy)
+            return team.memoryHandoff ? MemoryAwareImageProvider(inner: comfyProvider, lmStudioURL: team.lmStudioURL) : comfyProvider
+        case "svg": return ClaudeSVGImageProvider(text: provider(for: .artDirector))
         default: return MockImageProvider()
         }
     }
 
-    var providers: ProviderSet { ProviderSet(text: textProvider, image: imageProvider) }
+    var providers: ProviderSet {
+        var agents: [AgentRole: any TextProvider] = [:]
+        for role in AgentRole.allCases { agents[role] = provider(for: role) }
+        return ProviderSet(text: provider(for: .writer), image: imageProvider, agents: agents)
+    }
+
+    /// The agents the current field actually uses.
+    var activeRoles: [AgentRole] {
+        var roles: [AgentRole] = [.dialDesigner]
+        if adapter.capabilities.needsImageProvider { roles.append(.artDirector) }
+        else if adapter.capabilities.kind == .code { roles.append(.coder) }
+        else { roles.append(.writer) }
+        if team.checkerEnabled { roles.append(.checker) }
+        return roles
+    }
 
     /// A setup step that is still missing for the current field, in plain words.
     var configurationIssue: String? {
-        if textProviderKind == "anthropic" && !hasAPIKey {
-            return "No Anthropic API key yet. Add one in Settings, or use the Mock provider to test."
+        let needKey = activeRoles.filter { team.assignment($0).backend == .anthropic }
+        if !needKey.isEmpty && !hasAPIKey {
+            return "\(needKey.map(\.title).joined(separator: ", ")) use Claude, but no Anthropic API key is set. Add one in Settings → Agents, or switch those agents to LM Studio."
+        }
+        let noModel = activeRoles.filter { team.assignment($0).backend != .mock && team.assignment($0).model.trimmed.isEmpty }
+        if !noModel.isEmpty {
+            return "Choose a model for \(noModel.map(\.title).joined(separator: ", ")) in Settings → Agents."
         }
         if adapter.capabilities.needsImageProvider && imageProviderKind == "comfyui" && comfy.checkpoint.trimmed.isEmpty {
             return "Choose a ComfyUI model in Settings before generating images."
@@ -104,7 +146,8 @@ final class AppModel: ObservableObject {
     }
 
     var usingMock: Bool {
-        textProviderKind == "mock" || (adapter.capabilities.needsImageProvider && imageProviderKind == "mock")
+        activeRoles.contains { team.assignment($0).backend == .mock }
+            || (adapter.capabilities.needsImageProvider && imageProviderKind == "mock")
     }
 
     // MARK: - Current session
@@ -289,10 +332,12 @@ final class AppModel: ObservableObject {
                     output.assetPath = try store.saveAsset(data, ext: generated.assetExtension ?? "bin",
                                                            sessionID: sessionID, name: UUID().uuidString)
                 }
+                var snapID: UUID?
                 self.updateSession(sessionID) {
-                    $0.record(output, origin: quality == .render ? .render : .preview, state: state)
+                    snapID = $0.record(output, origin: quality == .render ? .render : .preview, state: state).id
                 }
                 self.phase = .idle
+                if let snapID { self.review(snapID, in: sessionID, output: output, constraints: state.constraints) }
             } catch {
                 guard let self, self.gate.isCurrent(ticket) else { return }
                 if error is CancellationError || (error as? URLError)?.code == .cancelled {
@@ -446,13 +491,30 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Checker
+
+    /// Asks the Checker agent to review a result against the fixed requirements. Never changes the result.
+    func review(_ snapshotID: UUID, in sessionID: UUID, output: Output, constraints: [Constraint]) {
+        guard team.checkerEnabled, let request = Checker.request(for: output, constraints: constraints) else { return }
+        let checker = provider(for: .checker)
+        let reviewer = "Checker · \(checker.name) \(checker.model)"
+        Task { [weak self] in
+            let review: Review
+            do {
+                review = Checker.parse(try await checker.complete(request), reviewer: reviewer)
+            } catch {
+                review = Review(passed: false, issues: ["Review failed: \(error.localizedDescription)"], reviewer: reviewer)
+            }
+            self?.updateSession(sessionID) { $0.setReview(review, for: snapshotID) }
+        }
+    }
+
     // MARK: - Settings
 
     func saveAPIKey(_ key: String) {
         let ok = Keychain.write(key.trimmed, Self.keyAccount)
         hasAPIKey = ok && !key.trimmed.isEmpty
         if !ok { alertMessage = "The Keychain refused to store the key." }
-        if hasAPIKey { textProviderKind = "anthropic" }
     }
 
     func checkComfy() async {
@@ -464,6 +526,39 @@ final class AppModel: ObservableObject {
         } catch {
             comfyModels = []
             comfyStatus = error.localizedDescription
+        }
+    }
+
+    func checkLocal(_ backend: AgentBackend) async {
+        let url = backend == .lmStudio ? team.lmStudioURL : team.ollamaURL
+        localStatus[backend] = "Checking…"
+        do {
+            let models = try await OpenAICompatibleTextProvider.models(baseURL: url)
+            localModels[backend] = models
+            localStatus[backend] = models.isEmpty ? "Connected, but no models were found." : "Connected. \(models.count) models available."
+        } catch {
+            localModels[backend] = []
+            localStatus[backend] = error.localizedDescription
+        }
+    }
+
+    func assignmentBinding(_ role: AgentRole) -> Binding<AgentAssignment> {
+        Binding(get: { self.team.assignment(role) }, set: { self.team.set($0) })
+    }
+
+    // MARK: - Mixar
+
+    func connectMixar() async {
+        mixarStatus = "Connecting…"
+        mixarClient?.stop()
+        do {
+            let (client, tools) = try await Mixar.connect()
+            mixarClient = client
+            mixarTools = tools
+            mixarStatus = "Connected. Mixar offers \(tools.count) tools."
+        } catch {
+            mixarTools = []
+            mixarStatus = error.localizedDescription
         }
     }
 }

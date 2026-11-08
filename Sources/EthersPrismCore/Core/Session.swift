@@ -33,9 +33,13 @@ public struct Output: Codable, Hashable, Sendable {
     public var provider: String
     public var model: String
     public var promptModel: String?
+    /// Which agent made this (for example "Writer").
+    public var agent: String?
+    /// The Checker's review, added after generation. Never changes the result itself.
+    public var review: Review?
 
     public init(kind: OutputKind, text: String? = nil, assetPath: String? = nil, imagePrompt: String? = nil,
-                provider: String, model: String, promptModel: String? = nil) {
+                provider: String, model: String, promptModel: String? = nil, agent: String? = nil, review: Review? = nil) {
         self.kind = kind
         self.text = text
         self.assetPath = assetPath
@@ -43,6 +47,8 @@ public struct Output: Codable, Hashable, Sendable {
         self.provider = provider
         self.model = model
         self.promptModel = promptModel
+        self.agent = agent
+        self.review = review
     }
 }
 

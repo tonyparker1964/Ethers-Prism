@@ -31,6 +31,14 @@ struct OutputColumn: View {
             .padding(.top, 8)
 
             if let snap = model.current?.currentSnapshot {
+                if let review = snap.output.review {
+                    Banner(style: review.passed ? .info : .warning,
+                           text: review.passed
+                               ? "\(review.reviewer): meets the fixed requirements."
+                               : "\(review.reviewer) flagged: " + review.issues.joined(separator: " · "))
+                        .padding(.horizontal, 10)
+                        .padding(.top, 6)
+                }
                 ResultDisplay(snapshot: snap, editable: model.adapter.capabilities.editable)
                     .id(snap.id)
             } else {
@@ -55,7 +63,7 @@ struct OutputColumn: View {
                         Text(snap.createdAt, style: .time)
                     }
                     .font(.subheadline)
-                    Text(snap.output.provider)
+                    Text([snap.output.agent, snap.output.provider].compactMap { $0 }.joined(separator: " · "))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

@@ -36,10 +36,13 @@ public enum Exporter {
             let star = s.chosen ? " ★" : ""
             l.append("\(i + 1). \(f.string(from: s.createdAt)) — \(s.origin.label)\(star): \(session.summary(for: s))")
             if !values.isEmpty { l.append("   Values: \(values)") }
-            var meta = "   Made with: \(s.output.provider)"
+            var meta = "   Made with: \(s.output.agent.map { "\($0) — " } ?? "")\(s.output.provider)"
             if !s.output.model.isEmpty { meta += " · \(s.output.model)" }
             if let pm = s.output.promptModel { meta += " (prompt by \(pm))" }
             l.append(meta)
+            if let r = s.output.review {
+                l.append("   Checked by \(r.reviewer): " + (r.passed ? "meets the fixed requirements" : "flagged " + r.issues.joined(separator: "; ")))
+            }
         }
 
         l += ["", "## Final selection", "\(final.origin.label) from \(f.string(from: final.createdAt))\(final.chosen ? ", marked as chosen" : "")."]
