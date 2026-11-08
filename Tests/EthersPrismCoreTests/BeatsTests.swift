@@ -127,3 +127,14 @@ final class ProducerTests: XCTestCase {
         XCTAssertEqual(index.drumKits, kits.sorted())
     }
 }
+
+final class ProducerFormatTests: XCTestCase {
+    func testFlatAnswersAndNumbersAsTextAreRead() throws {
+        let plan = try BeatProducer.parse(#"{"style":"trap","kits":[],"tempo":"72","swing":10,"density":55.5,"note":"ok"}"#, kits: [])
+        XCTAssertEqual(plan.style?.id, "trap")
+        XCTAssertEqual(plan.dialValues["tempo"], 72)
+        XCTAssertEqual(plan.dialValues["swing"], 10)
+        XCTAssertEqual(plan.dialValues["density"], 55.5)
+        XCTAssertThrowsError(try BeatProducer.parse("sorry, I can't", kits: []))
+    }
+}
