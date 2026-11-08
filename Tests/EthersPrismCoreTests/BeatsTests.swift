@@ -138,3 +138,20 @@ final class ProducerFormatTests: XCTestCase {
         XCTAssertThrowsError(try BeatProducer.parse("sorry, I can't", kits: []))
     }
 }
+
+final class BuiltInProducerTests: XCTestCase {
+    func testMoodWordsStyleAndKitsComeFromTheGoal() {
+        let kits = ["Afrobeats Library", "Basement Era Library", "Dusty Keys Library"]
+        let plan = BeatProducer.builtIn(goal: "slow dusty lo-fi with basement era drums", kits: kits)
+        XCTAssertEqual(plan.style?.id, "lofi")
+        XCTAssertEqual(plan.dialValues["tempo"], 25)
+        XCTAssertEqual(plan.dialValues["tone"], 30)
+        XCTAssertEqual(plan.dialValues["swing"], 70)
+        XCTAssertEqual(plan.kits, ["Basement Era Library", "Dusty Keys Library"])
+        XCTAssertEqual(BeatProducer.builtIn(goal: "amapiano groove", kits: kits).kits, ["Afrobeats Library"])
+        let plain = BeatProducer.builtIn(goal: "something", kits: kits)
+        XCTAssertNil(plain.style)
+        XCTAssertTrue(plain.dialValues.isEmpty)
+        XCTAssertTrue(plain.kits.isEmpty)
+    }
+}

@@ -119,6 +119,64 @@ public enum BeatProducer {
         }
     }
 
+    // MARK: Built-in producer (no AI)
+
+    /// Mood words and the dial positions they suggest. Checked as whole words in the goal.
+    static let moods: [(words: [String], dial: String, value: Double)] = [
+        (["slow", "chill", "laid back", "laidback", "relaxed", "late night", "late-night", "sleepy", "mellow", "calm"], "tempo", 25),
+        (["fast", "energetic", "hype", "aggressive", "upbeat", "driving", "intense", "party"], "tempo", 80),
+        (["swing", "swung", "jazzy", "jazz", "bouncy", "shuffle", "groovy", "lazy", "dusty", "loose"], "swing", 70),
+        (["straight", "tight", "robotic", "mechanical", "quantized"], "swing", 5),
+        (["minimal", "sparse", "simple", "stripped", "empty"], "density", 20),
+        (["busy", "complex", "dense", "rolling", "frantic"], "density", 80),
+        (["evolving", "fills", "live", "varied", "changing", "jazz", "jazzy"], "variation", 70),
+        (["loop", "repetitive", "hypnotic", "steady"], "variation", 15),
+        (["dark", "muffled", "warm", "dusty", "vintage", "underwater", "late night", "late-night", "murky", "vinyl"], "tone", 30),
+        (["bright", "crisp", "clean", "shiny", "airy", "sparkly", "modern"], "tone", 90),
+        (["no bass", "without bass", "drums only", "just drums"], "bass", 0),
+        (["heavy bass", "bassy", "808", "sub", "deep", "bass heavy", "boomy"], "bass", 85)
+    ]
+
+    /// Reads mood words in the goal and picks kits whose names match the goal or the style.
+    /// Always works, needs no model, and gives the same answer for the same goal.
+    public static func builtIn(goal: String, kits available: [String]) -> ProducerPlan {
+        let g = " " + BeatStyle.words(goal) + " "
+        var sums: [String: (total: Double, count: Double)] = [:]
+        var heard: [String] = []
+        for mood in moods {
+            if let w = mood.words.first(where: { g.contains(" " + BeatStyle.words($0) + " ") }) {
+                let s = sums[mood.dial] ?? (0, 0)
+                sums[mood.dial] = (s.total + mood.value, s.count + 1)
+                if !heard.contains(w) { heard.append(w) }
+            }
+        }
+        var values: [String: Double] = [:]
+        for (dial, s) in sums { values[dial] = (s.total / s.count).rounded() }
+
+        let detected = BeatStyle.detect(in: goal)
+        let named = BeatStyle.all.contains { st in st.keywords.contains { g.contains(" " + BeatStyle.words($0) + " ") } }
+        let style: BeatStyle? = named ? detected : nil
+
+        // Kits: names sharing a word with the goal (or starting with a style word, like "Afrobeats" for afro).
+        let goalWords = Set(SampleScanner.tokens(goal).filter { $0.count >= 4 && !BeatsAdapter.genericKitWords.contains($0) })
+        let styleWords = Set((style?.keywords ?? []).flatMap { SampleScanner.tokens($0) }.filter { $0.count >= 3 })
+        var kits: [String] = []
+        for kit in available {
+            let words = SampleScanner.tokens(kit)
+            let hit = words.contains { w in goalWords.contains(w) || styleWords.contains { w.hasPrefix($0) } }
+            if hit { kits.append(kit) }
+            if kits.count == 3 { break }
+        }
+
+        var parts: [String] = []
+        if let style { parts.append(style.name.lowercased()) }
+        if !heard.isEmpty { parts.append("heard “\(heard.joined(separator: "”, “"))”") }
+        let note = parts.isEmpty
+            ? "no style or mood words found in the goal, so the dials start in the middle."
+            : parts.joined(separator: "; ") + "."
+        return ProducerPlan(style: style, kits: kits, dialValues: values, note: note)
+    }
+
     public static func isProducerPick(_ c: Constraint) -> Bool {
         (c.kind == .other && c.text.hasPrefix(stylePrefix)) || (c.kind == .mustInclude && c.text.hasPrefix(kitPrefix))
     }

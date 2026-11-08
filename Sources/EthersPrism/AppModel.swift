@@ -308,10 +308,21 @@ final class AppModel: ObservableObject {
         var dials = base
         var constraints = s.constraints
         producerNote = nil
-        if team.assignment(.producer).backend != .mock, !sampleIndex.isEmpty {
+        if !sampleIndex.isEmpty {
+            // The AI producer when one is set up; the built-in one (no AI) when it's off or can't answer.
+            var plan = BeatProducer.builtIn(goal: s.goal, kits: sampleIndex.drumKits)
+            var who = "Built-in producer (no AI)"
+            var fellBack: String?
+            if team.assignment(.producer).backend != .mock {
+                let agent = provider(for: .producer)
+                do {
+                    plan = try await BeatProducer.plan(goal: s.goal, index: sampleIndex, constraints: s.constraints, using: agent)
+                    who = "Music Producer (\(agent.name))"
+                } catch {
+                    fellBack = error.localizedDescription
+                }
+            }
             do {
-                let plan = try await BeatProducer.plan(goal: s.goal, index: sampleIndex, constraints: s.constraints,
-                                                       using: provider(for: .producer))
                 dials = BeatProducer.apply(plan, to: base)
                 constraints = BeatProducer.constraints(for: plan, keeping: s.constraints)
                 if let style = plan.style {
@@ -324,9 +335,9 @@ final class AppModel: ObservableObject {
                     }
                 }
                 let kits = plan.kits.isEmpty ? "" : " Kits: \(plan.kits.joined(separator: ", "))."
-                producerNote = "Music Producer: \(plan.note.isEmpty ? "set up the dials." : plan.note)\(kits)"
-            } catch {
-                producerNote = "The Music Producer couldn't help (\(error.localizedDescription)), so these are the standard dials. Check Settings → Agents."
+                var note = "\(who): \(plan.note.isEmpty ? "set up the dials." : plan.note)\(kits)"
+                if let fellBack { note += " (The AI producer couldn't answer: \(fellBack))" }
+                producerNote = note
             }
         }
         updateSession(s.id) {
