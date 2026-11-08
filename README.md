@@ -2,62 +2,63 @@
 
 **Don't ask the AI for the thing. Ask it for an instrument to make the thing.**
 
-Ethers Prism is a Mac app where you describe a goal and get dials (sliders) instead of a single answer. You play the dials, watch quick previews change, branch off in new directions, and render the version you choose. Your path is saved as an authorship log.
+Describe a goal and Ethers Prism builds you an editor: dials with named ends, plus fixed requirements. Move the dials, watch previews change, sweep one dial across its range, branch through history, compare states, render the version you choose, and export it with an authorship log. Choosing and editing the dials is part of the authorship.
 
-## Run it
+Text and Image are fully working. Video (storyboards), Music (written sketches), Code (previews) and Research (plans) are labeled unfinished.
 
-Requires macOS 14 (Sonoma) or later and Xcode 15 or later.
+## Setup
 
-1. Unzip, then double-click `Package.swift` to open it in Xcode.
-2. Pick the **EthersPrism** scheme and **My Mac**, then press **⌘R**.
-3. Run the tests with **⌘U**.
+Needs macOS 14 or later, Xcode 15 or later, Apple Silicon.
 
-From Terminal: `swift run EthersPrism` to launch, `swift test` for the tests.
+1. Double-click `Package.swift` to open it in Xcode.
+2. Choose the **EthersPrism** scheme and **My Mac**, then press **⌘R** to run. Press **⌘U** to run the tests.
 
-The app starts in **Offline demo** mode so you can try everything without a key. For real results, open **Settings (⌘,)**, paste an Anthropic API key from console.anthropic.com, and save it. The key is stored in your Keychain. The model name is editable there too.
+From Terminal: `swift run EthersPrism` and `swift test`.
 
-## How to use it
+## Providers (Settings, ⌘,)
 
-1. **Goal.** Pick a field (Writing, Image, Video, Music, Code, Research) and describe what you want.
-2. **Suggest Dials.** The AI proposes six dials, each with two named ends. Rename, redefine, delete or add your own with the pencil and the Add Dial button. Choosing the dials is part of the authorship.
-3. **Play.** Release a slider and a quick preview appears. **Explore Nearby** nudges every unlocked dial. Use the lock to hold a dial fixed.
-4. **Sweep.** Choose one dial to see five previews from 0 to 100 side by side, so you can feel what that dial does. Then pick one.
-5. **History.** Every state is kept as a tree. Click any earlier state to go back, then move a dial to branch.
-6. **Compare.** Put two states side by side and see which dials changed.
-7. **Render Full Quality** when you're happy, ★ it, and **Export** to save the result with its authorship log (plus an `.svg` file for images).
+- **Text:** Anthropic (Claude) or Mock. Paste an API key from console.anthropic.com. It is stored in your Keychain and never written to sessions or exports. The model name is editable.
+- **Images:**
+  - **ComfyUI on this Mac:** start your instance, enter its address (Comfy Desktop usually uses `http://127.0.0.1:8000`, plain ComfyUI `8188`), press *Check Connection* and pick a model. Claude writes the image prompt and ComfyUI renders it. Previews are smaller with fewer steps, so they really are faster, and they share a seed with the full render.
+  - **Claude SVG drawing:** vector drawings by Claude. A preview costs about the same as a render.
+  - **Mock:** placeholder images for testing.
+- **Mock** providers are always labeled in the app, so you can't mistake them for real results.
+- Ollama and LM Studio are planned and shown as not yet available.
 
-## What each field produces
+## Using it
 
-| Field | Preview / result |
-|---|---|
-| Writing, Music, Research | Formatted text (a music sketch for Music: tempo, key, sections, chords) |
-| Image | SVG illustration drawn by the model |
-| Video | Scene-by-scene storyboard (a cheap preview of a video before any expensive render) |
-| Code | A single code file |
+1. Pick a field, type a goal, press **Suggest Dials** (4–8 dials). Edit, add, delete, reorder (pencil → Move Up/Down) or lock any dial.
+2. Add **fixed requirements** (accuracy, accessibility, must include, must avoid). They are never put on sliders.
+3. Release a slider and a preview appears once the dials stop moving. **Explore Nearby** nudges unlocked dials. **Render Full Quality** when you're ready.
+4. **Edit Text** to change a result by hand. Saving makes a new history state, and regenerating never overwrites it.
+5. **Sweep** one unlocked dial: five previews at 0/25/50/75/100. *Use This* saves it as a branch.
+6. **History** is a tree. Click any state to return to it, then change something to branch.
+7. **Compare** two states side by side, including differences in goal, dials and requirements.
+8. **Templates:** *Save Editor as Template* and *New from Template*. Three editable examples are included.
+9. **Export** writes the result, a portable session file and a readable authorship log into a folder. **Import Session** opens a session file.
+
+## Storage
+
+`~/Library/Application Support/Ethers Prism/` holds `Sessions/` (versioned JSON, saved atomically), `Assets/<session>/` (generated media, referenced by relative paths) and `Templates/`. Imported files are validated: newer formats are refused and any path that could leave the Assets folder is dropped.
 
 ## Layout
 
 ```
-Sources/EthersPrismCore   engine, no UI: dials, history tree, compiler, adapters, providers, storage
-Sources/Ethers Prism       SwiftUI app
+Sources/EthersPrismCore/   no UI, no vendor SDKs
+  Core/       Dial, Constraint, Session, history tree, sweep, templates
+  Compile/    deterministic compiler, dial suggester, output cleaning
+  Adapters/   DomainAdapter protocol, Text, Image, unfinished fields
+  Providers/  Anthropic, ComfyUI, Claude SVG, Mock
+  Storage/    sessions, assets, templates, import validation
+  Export/     authorship log, result files
+Sources/EthersPrism/       SwiftUI app (Workspace, Displays, Sheets, Settings)
 Tests/EthersPrismCoreTests
 ```
 
-Sessions are saved as JSON in `~/Library/Application Support/Ethers Prism/Sessions`.
+## Add a field (domain adapter)
 
-## Add a new field
+1. Write a type that conforms to `DomainAdapter` (see `Adapters/Adapters.swift`). Give it an `id`, `name`, `status`, `capabilities`, `dialHint`, a deterministic `compile`, and `preview` and `render` that return a `Generated` (text and/or asset bytes). Most text-shaped fields are just a configured `TextAdapter`.
+2. Add it to `Domains.all`.
+3. If it produces a new kind of output, add a case to `OutputKind` and one display in `Displays/Displays.swift`.
 
-Each field is a `DomainAdapter`. For most fields, add one entry to `Domains` in `Adapters.swift`:
-
-```swift
-public static let recipe = BasicAdapter(
-    id: "recipe", name: "Recipe", symbol: "fork.knife", outputKind: .text,
-    axisHint: "spice, effort, tradition vs fusion, richness, portion size",
-    role: "You are a chef.",
-    format: "Ingredients list, then numbered steps.",
-    previewTokens: 500, renderTokens: 2500)
-```
-
-Then add `recipe` to `Domains.all`. It appears in the Field picker automatically.
-
-If a field needs its own output type (audio, real video, 3D), add a case to `OutputKind`, a view for it in `OutputView`, and write a custom type that conforms to `DomainAdapter`. To use a different AI service or a local model, write a type that conforms to `ModelProvider`.
+Sessions, history, sweep, compare, templates, storage and export work automatically. Mark a field `.unfinished("what it can't do yet")` until it truly delivers. `Session.projectID` is reserved for linking sessions across fields under one project later.

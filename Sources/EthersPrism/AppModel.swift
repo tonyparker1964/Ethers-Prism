@@ -3,10 +3,17 @@ import AppKit
 import UniformTypeIdentifiers
 import EthersPrismCore
 
-struct SweepResult: Identifiable {
+enum Phase: Equatable {
+    case idle
+    case working(String)
+    case failed(String)
+}
+
+struct SweepItem: Identifiable {
     let id = UUID()
     let value: Double
-    var output: String?
+    let state: WorkingState
+    var output: Output?
     var error: String?
 }
 
@@ -14,39 +21,90 @@ struct SweepResult: Identifiable {
 final class AppModel: ObservableObject {
     static let keyAccount = "anthropic-api-key"
 
+    let store = Store()
+
     @Published var sessions: [Session] = []
     @Published var selectedID: UUID?
-    @Published var isGenerating = false
-    @Published var isSuggesting = false
-    @Published var errorMessage: String?
+    @Published var templates: [EditorTemplate] = []
+
+    @Published var phase: Phase = .idle
+    @Published var suggesting = false
     @Published var autoPreview = true
+    @Published var alertMessage: String?
+    private var lastFailedQuality: Quality = .preview
 
     @Published var showSweep = false
     @Published var showCompare = false
-    @Published var sweepAxisID: UUID?
-    @Published var sweepResults: [SweepResult] = []
+    @Published var showTemplates = false
+    @Published var showSaveTemplate = false
+    @Published var sweepOriginID: UUID?
+    @Published var sweepDialID: UUID?
+    @Published var sweepItems: [SweepItem] = []
 
-    @Published var providerKind: String {
-        didSet { UserDefaults.standard.set(providerKind, forKey: "providerKind") }
-    }
-    @Published var modelName: String {
-        didSet { UserDefaults.standard.set(modelName, forKey: "modelName") }
+    // Settings
+    @Published var textProviderKind: String { didSet { defaults.set(textProviderKind, forKey: "textProvider") } }
+    @Published var modelName: String { didSet { defaults.set(modelName, forKey: "modelName") } }
+    @Published var imageProviderKind: String { didSet { defaults.set(imageProviderKind, forKey: "imageProvider") } }
+    @Published var comfy: ComfyUISettings {
+        didSet { if let d = try? JSONEncoder().encode(comfy) { defaults.set(d, forKey: "comfy") } }
     }
     @Published var hasAPIKey: Bool
+    @Published var comfyModels: [String] = []
+    @Published var comfyStatus: String?
 
-    private let store = SessionStore()
-    private var previewTask: Task<Void, Never>?
-    private var generationToken = UUID()
-    private var sweepToken = UUID()
+    private let defaults = UserDefaults.standard
+    private let gate = GenerationGate()
+    private let sweepGate = GenerationGate()
+    private var genTask: Task<Void, Never>?
+    private var debounceTask: Task<Void, Never>?
 
     init() {
         let key = Keychain.read(Self.keyAccount) ?? ""
         hasAPIKey = !key.isEmpty
-        // First run with no key: start in offline demo so the instrument works immediately.
-        providerKind = UserDefaults.standard.string(forKey: "providerKind") ?? (key.isEmpty ? "mock" : "anthropic")
+        textProviderKind = UserDefaults.standard.string(forKey: "textProvider") ?? (key.isEmpty ? "mock" : "anthropic")
         modelName = UserDefaults.standard.string(forKey: "modelName") ?? "claude-sonnet-5-5"
+        imageProviderKind = UserDefaults.standard.string(forKey: "imageProvider") ?? "mock"
+        if let d = UserDefaults.standard.data(forKey: "comfy"), let c = try? JSONDecoder().decode(ComfyUISettings.self, from: d) {
+            comfy = c
+        } else {
+            comfy = ComfyUISettings()
+        }
         sessions = store.loadAll()
+        templates = store.loadTemplates()
         if sessions.isEmpty { newSession() } else { selectedID = sessions.first?.id }
+    }
+
+    // MARK: - Providers
+
+    var textProvider: any TextProvider {
+        textProviderKind == "mock"
+            ? MockTextProvider()
+            : AnthropicTextProvider(apiKey: Keychain.read(Self.keyAccount) ?? "", model: modelName)
+    }
+
+    var imageProvider: (any ImageProvider)? {
+        switch imageProviderKind {
+        case "comfyui": return ComfyUIImageProvider(settings: comfy)
+        case "svg": return ClaudeSVGImageProvider(text: textProvider)
+        default: return MockImageProvider()
+        }
+    }
+
+    var providers: ProviderSet { ProviderSet(text: textProvider, image: imageProvider) }
+
+    /// A setup step that is still missing for the current field, in plain words.
+    var configurationIssue: String? {
+        if textProviderKind == "anthropic" && !hasAPIKey {
+            return "No Anthropic API key yet. Add one in Settings, or use the Mock provider to test."
+        }
+        if adapter.capabilities.needsImageProvider && imageProviderKind == "comfyui" && comfy.checkpoint.trimmed.isEmpty {
+            return "Choose a ComfyUI model in Settings before generating images."
+        }
+        return nil
+    }
+
+    var usingMock: Bool {
+        textProviderKind == "mock" || (adapter.capabilities.needsImageProvider && imageProviderKind == "mock")
     }
 
     // MARK: - Current session
@@ -55,50 +113,62 @@ final class AppModel: ObservableObject {
 
     var adapter: any DomainAdapter { Domains.adapter(for: current?.domainID ?? "text") }
 
-    var provider: any ModelProvider {
-        providerKind == "mock"
-            ? MockProvider()
-            : AnthropicProvider(apiKey: Keychain.read(Self.keyAccount) ?? "", model: modelName)
+    func update(_ change: (inout Session) -> Void) {
+        guard let id = selectedID else { return }
+        updateSession(id, change)
     }
 
-    func update(_ change: (inout Session) -> Void) {
-        guard let i = sessions.firstIndex(where: { $0.id == selectedID }) else { return }
+    func updateSession(_ id: UUID, _ change: (inout Session) -> Void) {
+        guard let i = sessions.firstIndex(where: { $0.id == id }) else { return }
         change(&sessions[i])
         sessions[i].updatedAt = Date()
-        try? store.save(sessions[i])
+        do { try store.save(sessions[i]) } catch { alertMessage = "Couldn't save: \(error.localizedDescription)" }
     }
 
     var goalBinding: Binding<String> {
-        Binding(get: { self.current?.goal ?? "" },
-                set: { value in
-                    self.update {
-                        $0.goal = value
-                        $0.title = value.trimmed.isEmpty ? "Untitled" : String(value.trimmed.prefix(48))
-                    }
-                })
+        Binding(get: { self.current?.goal ?? "" }, set: { v in self.update { $0.setGoal(v) } })
     }
 
     var domainBinding: Binding<String> {
-        Binding(get: { self.current?.domainID ?? "text" },
-                set: { value in self.update { $0.domainID = value } })
+        Binding(get: { self.current?.domainID ?? "text" }, set: { v in self.update { $0.domainID = v } })
     }
 
-    func axisBinding(_ id: UUID) -> Binding<Dial> {
-        Binding(get: { self.current?.axes.first(where: { $0.id == id }) ?? Dial(name: "", lowPole: "", highPole: "") },
-                set: { new in
-                    self.update { s in
-                        if let i = s.axes.firstIndex(where: { $0.id == id }) { s.axes[i] = new }
-                    }
-                })
+    func dialBinding(_ id: UUID) -> Binding<Dial> {
+        Binding(
+            get: { self.current?.dials.first(where: { $0.id == id }) ?? Dial(name: "", lowPole: "", highPole: "") },
+            set: { new in
+                let old = self.current?.dials.first(where: { $0.id == id })
+                self.update { $0.updateDial(new) }
+                if let old, old.intValue != new.intValue { self.dialsChanged() }
+            })
     }
 
-    // MARK: - Sessions
+    func constraintBinding(_ id: UUID) -> Binding<Constraint> {
+        Binding(
+            get: { self.current?.constraints.first(where: { $0.id == id }) ?? Constraint(kind: .other, text: "") },
+            set: { new in
+                self.update { s in
+                    if let i = s.constraints.firstIndex(where: { $0.id == id }) { s.constraints[i] = new }
+                }
+            })
+    }
+
+    // MARK: - Sessions and templates
 
     func newSession() {
         let s = Session()
         sessions.insert(s, at: 0)
         selectedID = s.id
         try? store.save(s)
+    }
+
+    func newSession(from template: EditorTemplate, goal: String) {
+        let s = template.makeSession(goal: goal)
+        sessions.insert(s, at: 0)
+        selectedID = s.id
+        try? store.save(s)
+        showTemplates = false
+        generate(.preview, force: true)
     }
 
     func delete(_ id: UUID) {
@@ -108,89 +178,144 @@ final class AppModel: ObservableObject {
         if sessions.isEmpty { newSession() }
     }
 
-    // MARK: - Dials
-
-    func addAxis() {
-        update { $0.axes.append(Dial(name: "New dial", lowPole: "less", highPole: "more")) }
+    func saveTemplate(name: String, summary: String, replacing existing: EditorTemplate?) {
+        guard let s = current else { return }
+        var t = EditorTemplate.from(s, name: name.trimmed.isEmpty ? "Untitled editor" : name.trimmed, summary: summary)
+        if let existing {
+            t.id = existing.id
+            t.builtIn = existing.builtIn
+        }
+        do {
+            try store.saveTemplate(t)
+            templates = store.loadTemplates()
+            update { $0.templateID = t.id }
+        } catch {
+            alertMessage = "Couldn't save the template: \(error.localizedDescription)"
+        }
+        showSaveTemplate = false
     }
 
-    func removeAxis(_ id: UUID) {
-        update { s in s.axes.removeAll { axis in axis.id == id } }
+    func deleteTemplate(_ id: UUID) {
+        store.deleteTemplate(id)
+        templates = store.loadTemplates()
     }
 
-    func suggestAxes() async {
+    // MARK: - Dials and constraints
+
+    func addDial() {
+        update { $0.addDial(Dial(name: "New dial", lowPole: "less", highPole: "more")) }
+    }
+
+    func removeDial(_ id: UUID) { update { $0.removeDial(id) } }
+
+    func moveDial(_ id: UUID, by offset: Int) { update { $0.moveDial(id, by: offset) } }
+
+    func addConstraint(_ kind: ConstraintKind) {
+        update { $0.constraints.append(Constraint(kind: kind, text: "")) }
+    }
+
+    func removeConstraint(_ id: UUID) {
+        update { s in s.constraints.removeAll { c in c.id == id } }
+    }
+
+    func suggestDials() async {
         guard let s = current, !s.goal.trimmed.isEmpty else {
-            errorMessage = "Describe what you want to make first."
+            alertMessage = "Describe what you want to make first."
             return
         }
-        isSuggesting = true
+        suggesting = true
+        defer { suggesting = false }
         do {
-            let text = try await provider.complete(AxisSuggester.request(goal: s.goal, adapter: adapter))
-            let axes = try AxisSuggester.parse(text)
-            update { $0.axes = axes }
-            isSuggesting = false
-            await generate(.preview)
+            let dials = try await adapter.suggestDials(for: s.goal, using: providers)
+            updateSession(s.id) { $0.dials = dials }
+            generate(.preview, force: true)
         } catch {
-            isSuggesting = false
-            errorMessage = error.localizedDescription
+            phase = .failed(error.localizedDescription)
         }
     }
 
-    /// Called when a slider is released. Waits briefly so a flurry of moves becomes one preview.
+    /// Waits until the dials stop moving, then previews once.
     func dialsChanged() {
         guard autoPreview else { return }
-        previewTask?.cancel()
-        previewTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 700_000_000)
+        debounceTask?.cancel()
+        debounceTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 750_000_000)
             guard !Task.isCancelled else { return }
-            await self?.generate(.preview)
+            self?.generate(.preview)
         }
     }
 
-    /// Nudges every unlocked dial a little and previews the result.
     func exploreNearby() {
-        update { s in
-            for i in s.axes.indices where !s.axes[i].locked {
-                s.axes[i].value = min(100, max(0, s.axes[i].value + Double.random(in: -18...18))).rounded()
-            }
-        }
-        Task { await generate(.preview) }
+        var rng = SystemRandomNumberGenerator()
+        update { $0.nudgeUnlocked(spread: 18, using: &rng) }
+        generate(.preview, force: true)
     }
 
     // MARK: - Generation
 
-    func generate(_ quality: Quality) async {
+    /// Starts a generation. Older requests are cancelled and their late answers ignored.
+    /// An automatic preview of a state that is already showing is skipped.
+    func generate(_ quality: Quality, force: Bool = false) {
         guard let s = current else { return }
         guard !s.goal.trimmed.isEmpty else {
-            errorMessage = "Describe what you want to make first."
+            phase = .failed("Describe what you want to make first.")
             return
         }
+        let issues = DialRules.issues(in: s.dials)
+        guard issues.isEmpty else {
+            phase = .failed(issues.map(\.message).joined(separator: " "))
+            return
+        }
+        let state = s.workingState
+        if quality == .preview, !force, let cur = s.currentSnapshot, cur.state.generatesSame(as: state) { return }
+
+        debounceTask?.cancel()
+        genTask?.cancel()
+        let ticket = gate.begin()
+        let adapter = self.adapter
+        let providers = self.providers
+        let store = self.store
         let sessionID = s.id
-        let usedAxes = s.axes
-        let request = adapter.compile(goal: s.goal, axes: usedAxes, quality: quality)
-        let kind = adapter.outputKind
-        let token = UUID()
-        generationToken = token
-        isGenerating = true
-        do {
-            let raw = try await provider.complete(request)
-            guard token == generationToken else { return } // a newer request replaced this one
-            let output = OutputCleaner.clean(raw, kind: kind)
-            if let i = sessions.firstIndex(where: { $0.id == sessionID }) {
-                sessions[i].record(output: output, quality: quality, axes: usedAxes)
-                try? store.save(sessions[i])
-            }
-        } catch {
-            if token == generationToken, !(error is CancellationError) {
-                errorMessage = error.localizedDescription
+        lastFailedQuality = quality
+        phase = .working(quality == .preview ? "Previewing…" : "Rendering full quality…")
+
+        genTask = Task { [weak self] in
+            do {
+                let request = adapter.compile(CompileInput(state: state, quality: quality))
+                let generated = try await adapter.generate(request, using: providers)
+                guard let self, self.gate.isCurrent(ticket) else { return }
+                var output = generated.output
+                if let data = generated.asset {
+                    output.assetPath = try store.saveAsset(data, ext: generated.assetExtension ?? "bin",
+                                                           sessionID: sessionID, name: UUID().uuidString)
+                }
+                self.updateSession(sessionID) {
+                    $0.record(output, origin: quality == .render ? .render : .preview, state: state)
+                }
+                self.phase = .idle
+            } catch {
+                guard let self, self.gate.isCurrent(ticket) else { return }
+                if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                    self.phase = .idle
+                } else {
+                    self.phase = .failed(error.localizedDescription)
+                }
             }
         }
-        if token == generationToken { isGenerating = false }
+    }
+
+    func retry() { generate(lastFailedQuality, force: true) }
+
+    func cancelGeneration() {
+        genTask?.cancel()
+        gate.invalidate()
+        phase = .idle
     }
 
     // MARK: - History
 
     func restore(_ id: UUID) {
+        debounceTask?.cancel()
         update { $0.restore(id) }
     }
 
@@ -199,81 +324,146 @@ final class AppModel: ObservableObject {
         update { $0.toggleChosen(id) }
     }
 
+    func saveManualEdit(_ text: String) {
+        update { $0.recordManualEdit(text: text) }
+    }
+
     // MARK: - Sweep
 
-    func sweep(axisID: UUID) {
+    func sweep(dialID: UUID) {
         guard let s = current else { return }
-        let values: [Double] = [0, 25, 50, 75, 100]
-        let token = UUID()
-        sweepToken = token
-        sweepAxisID = axisID
-        sweepResults = values.map { SweepResult(value: $0) }
+        let variants: [SweepVariant]
+        do {
+            variants = try Sweep.variants(of: s.workingState, dialID: dialID)
+        } catch {
+            alertMessage = error.localizedDescription
+            return
+        }
+        guard !s.goal.trimmed.isEmpty else {
+            alertMessage = "Describe what you want to make first."
+            return
+        }
+        let ticket = sweepGate.begin()
+        sweepOriginID = s.currentSnapshotID
+        sweepDialID = dialID
+        sweepItems = variants.map { SweepItem(value: $0.value, state: $0.state) }
         showSweep = true
 
         let adapter = self.adapter
-        let provider = self.provider
-        let kind = adapter.outputKind
-        for (i, v) in values.enumerated() {
-            var axes = s.axes
-            if let j = axes.firstIndex(where: { $0.id == axisID }) { axes[j].value = v }
-            let request = adapter.compile(goal: s.goal, axes: axes, quality: .preview)
-            Task {
+        let providers = self.providers
+        let store = self.store
+        let sessionID = s.id
+        for (i, v) in variants.enumerated() {
+            Task { [weak self] in
                 do {
-                    let raw = try await provider.complete(request)
-                    self.setSweep(i, token: token, output: OutputCleaner.clean(raw, kind: kind), error: nil)
+                    let generated = try await adapter.generate(
+                        adapter.compile(CompileInput(state: v.state, quality: .preview)), using: providers)
+                    guard let self, self.sweepGate.isCurrent(ticket), self.sweepItems.indices.contains(i) else { return }
+                    var output = generated.output
+                    if let data = generated.asset {
+                        output.assetPath = try store.saveAsset(data, ext: generated.assetExtension ?? "bin",
+                                                               sessionID: sessionID, name: "sweep-\(UUID().uuidString)")
+                    }
+                    self.sweepItems[i].output = output
                 } catch {
-                    self.setSweep(i, token: token, output: nil, error: error.localizedDescription)
+                    guard let self, self.sweepGate.isCurrent(ticket), self.sweepItems.indices.contains(i) else { return }
+                    self.sweepItems[i].error = error.localizedDescription
                 }
             }
         }
     }
 
-    private func setSweep(_ index: Int, token: UUID, output: String?, error: String?) {
-        guard token == sweepToken, sweepResults.indices.contains(index) else { return }
-        sweepResults[index].output = output
-        sweepResults[index].error = error
+    /// Saves the picked variant as a branch from the state the sweep started from.
+    func useSweep(_ item: SweepItem) {
+        guard let output = item.output else { return }
+        let dialName = item.state.dials.first { $0.id == sweepDialID }?.name ?? "dial"
+        let origin = sweepOriginID
+        update { s in
+            s.recordChild(of: origin, output, origin: .sweep, state: item.state,
+                          note: "sweep: \(dialName) at \(Int(item.value))")
+            s.workingState = item.state
+        }
+        closeSweep()
     }
 
-    func useSweep(_ result: SweepResult) {
-        guard let axisID = sweepAxisID, let output = result.output else { return }
-        update { s in
-            if let i = s.axes.firstIndex(where: { $0.id == axisID }) { s.axes[i].value = result.value }
-            s.record(output: output, quality: .preview)
-        }
+    func closeSweep() {
+        sweepGate.invalidate()
         showSweep = false
     }
 
-    // MARK: - Output
+    // MARK: - Files
+
+    func assetURL(_ output: Output) -> URL? { store.assetURL(output.assetPath) }
 
     func copyResult() {
-        guard let output = current?.currentSnapshot?.output else { return }
+        guard let out = current?.currentSnapshot?.output else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(output, forType: .string)
+        if let text = out.text {
+            NSPasteboard.general.setString(text, forType: .string)
+        } else if let url = assetURL(out), let img = NSImage(contentsOf: url) {
+            NSPasteboard.general.writeObjects([img])
+        }
     }
 
+    /// Writes the selected result, the portable session file and the authorship log into a folder.
     func export() {
-        guard let s = current, s.currentSnapshot != nil else { return }
-        let panel = NSSavePanel()
-        let safeTitle = s.title.replacingOccurrences(of: "/", with: "-")
-        panel.nameFieldStringValue = "\(safeTitle) — authorship.md"
-        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
+        guard let s = current, let snap = s.currentSnapshot else {
+            alertMessage = "Generate something first, then export it."
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Export Here"
+        panel.message = "Choose a folder for the result, the session file and the authorship log."
+        guard panel.runModal() == .OK, let dir = panel.url else { return }
+        let base = Exporter.safeFileName(s.title)
+        do {
+            if let file = Exporter.resultFile(snap, store: store) {
+                try file.data.write(to: dir.appendingPathComponent("\(base) — result.\(file.ext)"), options: .atomic)
+            }
+            try store.exportData(s).write(to: dir.appendingPathComponent("\(base) — session.json"), options: .atomic)
+            try Exporter.authorshipLog(s, adapterName: adapter.name)
+                .write(to: dir.appendingPathComponent("\(base) — authorship.md"), atomically: true, encoding: .utf8)
+            NSWorkspace.shared.activateFileViewerSelecting([dir.appendingPathComponent("\(base) — authorship.md")])
+        } catch {
+            alertMessage = "Export failed: \(error.localizedDescription)"
+        }
+    }
+
+    func importSession() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.message = "Choose an Ethers Prism session file."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            try Exporter.authorshipLog(s, adapter: adapter).write(to: url, atomically: true, encoding: .utf8)
-            if adapter.outputKind == .svg, let svg = s.currentSnapshot?.output {
-                try svg.write(to: url.deletingPathExtension().appendingPathExtension("svg"),
-                              atomically: true, encoding: .utf8)
-            }
+            let s = try store.importSession(from: url)
+            sessions.insert(s, at: 0)
+            selectedID = s.id
         } catch {
-            errorMessage = error.localizedDescription
+            alertMessage = error.localizedDescription
         }
     }
 
     // MARK: - Settings
 
     func saveAPIKey(_ key: String) {
-        Keychain.write(key.trimmed, Self.keyAccount)
-        hasAPIKey = !key.trimmed.isEmpty
-        if hasAPIKey { providerKind = "anthropic" }
+        let ok = Keychain.write(key.trimmed, Self.keyAccount)
+        hasAPIKey = ok && !key.trimmed.isEmpty
+        if !ok { alertMessage = "The Keychain refused to store the key." }
+        if hasAPIKey { textProviderKind = "anthropic" }
+    }
+
+    func checkComfy() async {
+        comfyStatus = "Checking…"
+        do {
+            comfyModels = try await ComfyUIImageProvider.checkpoints(baseURL: comfy.baseURL)
+            comfyStatus = comfyModels.isEmpty ? "Connected, but no models were found." : "Connected. \(comfyModels.count) models found."
+            if comfy.checkpoint.isEmpty, let first = comfyModels.first { comfy.checkpoint = first }
+        } catch {
+            comfyModels = []
+            comfyStatus = error.localizedDescription
+        }
     }
 }

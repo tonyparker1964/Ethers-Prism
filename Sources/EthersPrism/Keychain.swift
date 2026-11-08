@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-/// Stores the API key in the macOS Keychain (falls back to user defaults if the Keychain refuses).
+/// API keys live in the macOS Keychain. They are never written to session files or exports.
 enum Keychain {
     static let service = "Ethers Prism"
 
@@ -16,21 +16,17 @@ enum Keychain {
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
-        if SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-           let data = item as? Data, let value = String(data: data, encoding: .utf8) {
-            return value
-        }
-        return UserDefaults.standard.string(forKey: "fallback.\(account)")
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
-    static func write(_ value: String, _ account: String) {
+    @discardableResult
+    static func write(_ value: String, _ account: String) -> Bool {
         SecItemDelete(base(account) as CFDictionary)
-        UserDefaults.standard.removeObject(forKey: "fallback.\(account)")
-        guard !value.isEmpty else { return }
+        guard !value.isEmpty else { return true }
         var add = base(account)
         add[kSecValueData as String] = Data(value.utf8)
-        if SecItemAdd(add as CFDictionary, nil) != errSecSuccess {
-            UserDefaults.standard.set(value, forKey: "fallback.\(account)")
-        }
+        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
     }
 }
