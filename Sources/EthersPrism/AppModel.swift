@@ -145,7 +145,7 @@ final class AppModel: ObservableObject {
     /// A setup step that is still missing for the current field, in plain words.
     var configurationIssue: String? {
         if adapter.id == "beats" {
-            return sampleIndex.isEmpty ? "Add your sample folders in Settings → Sounds, then press Scan." : nil
+            return sampleIndex.isEmpty ? "Add your sample folders in Settings → Sounds → Add Folders…. The scan starts by itself." : nil
         }
         let needKey = activeRoles.filter { team.assignment($0).backend == .anthropic }
         if !needKey.isEmpty && !hasAPIKey {

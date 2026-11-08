@@ -110,7 +110,7 @@ public struct BeatsAdapter: DomainAdapter {
     private func run(_ request: CompiledRequest) async throws -> Generated {
         let index = BeatsLibrary.shared.index
         guard !index.isEmpty else {
-            throw PrismError.local("No samples yet. Open Settings → Sounds, add your Native Instruments folders and press Scan.")
+            throw PrismError.local("No samples yet. Open Settings → Sounds, and add your Native Instruments folders with Add Folders….")
         }
         let state = request.input.state
         let p = BeatParameters(dials: state.dials)
