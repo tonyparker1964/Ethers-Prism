@@ -606,22 +606,23 @@ final class AppModel: ObservableObject {
         scanStatus = "Scanning… big libraries can take a minute."
         let roots = soundFolders.filter { FileManager.default.fileExists(atPath: $0) }.map { URL(fileURLWithPath: $0) }
         let indexURL = sampleIndexURL
-        Task.detached(priority: .userInitiated) { [weak self] in
+        Task.detached(priority: .userInitiated) {
             let idx = SampleScanner.scan(roots: roots)
             if let d = try? JSONEncoder().encode(idx) { try? d.write(to: indexURL, options: .atomic) }
             BeatsLibrary.shared.index = idx
-            await MainActor.run {
-                guard let self else { return }
-                self.sampleIndex = idx
-                self.scanning = false
-                var status = "Found \(idx.files.count) samples in \(idx.groups.count) kits."
-                if idx.lockedCount > 0 {
-                    status += " Skipped \(idx.lockedCount) files in Native Instruments' locked formats (those play only inside Kontakt or Maschine)."
-                }
-                if !missing.isEmpty { status += " Not connected: \(missing.joined(separator: ", "))." }
-                self.scanStatus = status
-            }
+            await self.finishScan(idx, missing: missing)
         }
+    }
+
+    private func finishScan(_ idx: SampleIndex, missing: [String]) {
+        sampleIndex = idx
+        scanning = false
+        var status = "Found \(idx.files.count) samples in \(idx.groups.count) kits."
+        if idx.lockedCount > 0 {
+            status += " Skipped \(idx.lockedCount) files in Native Instruments' locked formats (those play only inside Kontakt or Maschine)."
+        }
+        if !missing.isEmpty { status += " Not connected: \(missing.joined(separator: ", "))." }
+        scanStatus = status
     }
 
     // MARK: - Mixar
