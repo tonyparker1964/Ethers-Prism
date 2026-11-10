@@ -198,7 +198,7 @@ public enum OutputCleaner {
             return svgBody(t) ?? t
         case .video:
             return t
-        case .code, .text, .storyboard:
+        case .code, .text, .storyboard, .audio:
             return stripFences(t)
         }
     }

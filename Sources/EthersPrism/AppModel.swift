@@ -66,6 +66,16 @@ final class AppModel: ObservableObject {
     @Published var mixarStatus: String?
     private var mixarClient: StdioMCPClient?
 
+    // Sounds for the Beats field
+    @Published var soundFolders: [String] { didSet { defaults.set(soundFolders, forKey: "soundFolders") } }
+    @Published var sampleIndex = SampleIndex()
+    @Published var scanning = false
+    @Published var scanStatus: String?
+    /// What the Music Producer chose, or why it couldn't help.
+    @Published var producerNote: String?
+    /// Changes whenever the taste profile does, so views showing it refresh.
+    @Published var tasteVersion = 0
+
     private let defaults = UserDefaults.standard
     private let gate = GenerationGate()
     private let sweepGate = GenerationGate()
@@ -91,8 +101,16 @@ final class AppModel: ObservableObject {
         } else {
             comfyVideo = ComfyVideoSettings()
         }
+        soundFolders = UserDefaults.standard.stringArray(forKey: "soundFolders") ?? []
         sessions = store.loadAll()
         templates = store.loadTemplates()
+        if let d = try? Data(contentsOf: sampleIndexURL), let idx = try? JSONDecoder().decode(SampleIndex.self, from: d) {
+            sampleIndex = idx
+            BeatsLibrary.shared.index = idx
+        }
+        if let d = try? Data(contentsOf: tasteURL), let t = try? JSONDecoder().decode(TasteProfile.self, from: d) {
+            BeatsLibrary.shared.taste = t
+        }
         if sessions.isEmpty { newSession() } else { selectedID = sessions.first?.id }
     }
 
@@ -142,6 +160,8 @@ final class AppModel: ObservableObject {
 
     /// The agents the current field actually uses.
     var activeRoles: [AgentRole] {
+        // Beats are made from your samples directly; only the Music Producer helps set them up.
+        if adapter.id == "beats" { return [.producer] }
         var roles: [AgentRole] = [.dialDesigner]
         if adapter.capabilities.needsImageProvider || adapter.capabilities.needsVideoProvider { roles.append(.artDirector) }
         else if adapter.capabilities.kind == .code { roles.append(.coder) }
@@ -152,6 +172,9 @@ final class AppModel: ObservableObject {
 
     /// A setup step that is still missing for the current field, in plain words.
     var configurationIssue: String? {
+        if adapter.id == "beats", sampleIndex.isEmpty {
+            return "Add your sample folders in Settings → Sounds → Add Folders…. The scan starts by itself."
+        }
         let needKey = activeRoles.filter { team.assignment($0).backend == .anthropic }
         if !needKey.isEmpty && !hasAPIKey {
             return "\(needKey.map(\.title).joined(separator: ", ")) use Claude, but no Anthropic API key is set. Add one in Settings → Agents, or switch those agents to LM Studio."
@@ -171,7 +194,9 @@ final class AppModel: ObservableObject {
     }
 
     var usingMock: Bool {
-        activeRoles.contains { team.assignment($0).backend == .mock }
+        // Beats are always real audio; a mock producer just means standard dials.
+        if adapter.id == "beats" { return false }
+        return activeRoles.contains { team.assignment($0).backend == .mock }
             || (adapter.capabilities.needsImageProvider && imageProviderKind == "mock")
     }
 
@@ -293,6 +318,10 @@ final class AppModel: ObservableObject {
         }
         suggesting = true
         defer { suggesting = false }
+        if adapter.id == "beats" {
+            await suggestBeatDials(s)
+            return
+        }
         do {
             let dials = try await adapter.suggestDials(for: s.goal, using: providers)
             updateSession(s.id) { $0.dials = dials }
@@ -300,6 +329,54 @@ final class AppModel: ObservableObject {
         } catch {
             phase = .failed(error.localizedDescription)
         }
+    }
+
+    /// Beats: standard dials, then the Music Producer (if it's set up) picks the style, kits and starting positions.
+    /// Its picks show up as dial positions and as "Style:" and "Kit:" requirements you can edit or delete.
+    private func suggestBeatDials(_ s: Session) async {
+        guard let base = try? await adapter.suggestDials(for: s.goal, using: providers) else { return }
+        var dials = base
+        var constraints = s.constraints
+        producerNote = nil
+        if !sampleIndex.isEmpty {
+            // The AI producer when one is set up; the built-in one (no AI) when it's off or can't answer.
+            let taste = BeatsLibrary.shared.taste
+            var plan = BeatProducer.builtIn(goal: s.goal, kits: sampleIndex.drumKits, taste: taste)
+            var who = "Built-in producer (no AI)"
+            var fellBack: String?
+            if team.assignment(.producer).backend != .mock {
+                let agent = provider(for: .producer)
+                do {
+                    plan = try await BeatProducer.plan(goal: s.goal, index: sampleIndex, constraints: s.constraints,
+                                                       using: agent, taste: taste)
+                    who = "Music Producer (\(agent.name))"
+                } catch {
+                    fellBack = error.localizedDescription
+                }
+            }
+            do {
+                dials = BeatProducer.apply(plan, to: base)
+                constraints = BeatProducer.constraints(for: plan, keeping: s.constraints)
+                if let style = plan.style {
+                    // Tempo poles follow the style the producer chose, not just the goal's words.
+                    let lo = Int(style.tempo.lowerBound), hi = Int(style.tempo.upperBound)
+                    if let i = dials.firstIndex(where: { $0.name.lowercased() == "tempo" }) {
+                        dials[i].lowPole = "\(lo) BPM"
+                        dials[i].highPole = "\(hi) BPM"
+                        dials[i].detail = "Speed within the \(style.name.lowercased()) range."
+                    }
+                }
+                let kits = plan.kits.isEmpty ? "" : " Kits: \(plan.kits.joined(separator: ", "))."
+                var note = "\(who): \(plan.note.isEmpty ? "set up the dials." : plan.note)\(kits)"
+                if let fellBack { note += " (The AI producer couldn't answer: \(fellBack))" }
+                producerNote = note
+            }
+        }
+        updateSession(s.id) {
+            $0.dials = dials
+            $0.constraints = constraints
+        }
+        generate(.preview, force: true)
     }
 
     /// Waits until the dials stop moving, then previews once.
@@ -355,8 +432,12 @@ final class AppModel: ObservableObject {
                 guard let self, self.gate.isCurrent(ticket) else { return }
                 var output = generated.output
                 if let data = generated.asset {
+                    let name = UUID().uuidString
                     output.assetPath = try store.saveAsset(data, ext: generated.assetExtension ?? "bin",
-                                                           sessionID: sessionID, name: UUID().uuidString)
+                                                           sessionID: sessionID, name: name)
+                    for (ext, extra) in generated.extraAssets {
+                        _ = try store.saveAsset(extra, ext: ext, sessionID: sessionID, name: name)
+                    }
                 }
                 var snapID: UUID?
                 self.updateSession(sessionID) {
@@ -432,8 +513,12 @@ final class AppModel: ObservableObject {
                     guard let self, self.sweepGate.isCurrent(ticket), self.sweepItems.indices.contains(i) else { return }
                     var output = generated.output
                     if let data = generated.asset {
+                        let name = "sweep-\(UUID().uuidString)"
                         output.assetPath = try store.saveAsset(data, ext: generated.assetExtension ?? "bin",
-                                                               sessionID: sessionID, name: "sweep-\(UUID().uuidString)")
+                                                               sessionID: sessionID, name: name)
+                        for (ext, extra) in generated.extraAssets {
+                            _ = try store.saveAsset(extra, ext: ext, sessionID: sessionID, name: name)
+                        }
                     }
                     self.sweepItems[i].output = output
                 } catch {
@@ -469,7 +554,9 @@ final class AppModel: ObservableObject {
     func copyResult() {
         guard let out = current?.currentSnapshot?.output else { return }
         NSPasteboard.general.clearContents()
-        if let text = out.text {
+        if out.kind == .audio, let url = assetURL(out) {
+            NSPasteboard.general.writeObjects([url as NSURL])
+        } else if let text = out.text {
             NSPasteboard.general.setString(text, forType: .string)
         } else if let url = assetURL(out), let img = NSImage(contentsOf: url) {
             NSPasteboard.general.writeObjects([img])
@@ -493,6 +580,11 @@ final class AppModel: ObservableObject {
         do {
             if let file = Exporter.resultFile(snap, store: store) {
                 try file.data.write(to: dir.appendingPathComponent("\(base) — result.\(file.ext)"), options: .atomic)
+            }
+            // A beat also comes with its MIDI file, for use in Maschine, Logic or any DAW.
+            if snap.output.kind == .audio, let url = assetURL(snap.output),
+               let midi = try? Data(contentsOf: url.deletingPathExtension().appendingPathExtension("mid")) {
+                try midi.write(to: dir.appendingPathComponent("\(base) — beat.mid"), options: .atomic)
             }
             try store.exportData(s).write(to: dir.appendingPathComponent("\(base) — session.json"), options: .atomic)
             try Exporter.authorshipLog(s, adapterName: adapter.name)
@@ -597,6 +689,82 @@ final class AppModel: ObservableObject {
 
     func assignmentBinding(_ role: AgentRole) -> Binding<AgentAssignment> {
         Binding(get: { self.team.assignment(role) }, set: { self.team.set($0) })
+    }
+
+    // MARK: - Sounds
+
+    var sampleIndexURL: URL { store.root.appendingPathComponent("SampleIndex.json") }
+    var tasteURL: URL { store.root.appendingPathComponent("Taste.json") }
+
+    /// Like (+1) or "not for me" (-1) on a beat. Pressing the same one again clears it.
+    /// Teaches the local taste profile which sounds, kits and dial positions you like.
+    func rateBeat(_ snapshotID: UUID, _ rating: Int) {
+        guard let s = current, let snap = s.snapshots.first(where: { $0.id == snapshotID }) else { return }
+        let old = snap.output.rating ?? 0
+        let new = old == rating ? 0 : rating
+        updateSession(s.id) { session in
+            if let i = session.snapshots.firstIndex(where: { $0.id == snapshotID }) {
+                session.snapshots[i].output.rating = new == 0 ? nil : new
+            }
+        }
+        let paths = snap.output.samples ?? []
+        let groups = paths.compactMap { p in sampleIndex.files.first { $0.path == p }?.group }
+        var taste = BeatsLibrary.shared.taste
+        taste.rate(samples: paths, kits: groups, style: BeatsAdapter.style(for: snap.state).id,
+                   dials: BeatParameters(dials: snap.state.dials), from: old, to: new)
+        BeatsLibrary.shared.taste = taste
+        if let d = try? JSONEncoder().encode(taste) { try? d.write(to: tasteURL, options: .atomic) }
+        tasteVersion += 1
+    }
+
+    func forgetTaste() {
+        BeatsLibrary.shared.taste = TasteProfile()
+        try? FileManager.default.removeItem(at: tasteURL)
+        tasteVersion += 1
+    }
+
+    func addSoundFolders() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Add"
+        panel.message = "Choose folders with your samples, for example your Native Instruments drive or its Maschine expansions folder."
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls where !soundFolders.contains(url.path) { soundFolders.append(url.path) }
+        scanSounds()
+    }
+
+    func removeSoundFolder(_ path: String) {
+        soundFolders.removeAll { $0 == path }
+        scanSounds()
+    }
+
+    /// Reads every folder in the background and saves the result, so the next launch doesn't rescan.
+    func scanSounds() {
+        guard !scanning else { return }
+        let missing = soundFolders.filter { !FileManager.default.fileExists(atPath: $0) }
+        scanning = true
+        scanStatus = "Scanning… big libraries can take a minute."
+        let roots = soundFolders.filter { FileManager.default.fileExists(atPath: $0) }.map { URL(fileURLWithPath: $0) }
+        let indexURL = sampleIndexURL
+        Task.detached(priority: .userInitiated) {
+            let idx = SampleScanner.scan(roots: roots)
+            if let d = try? JSONEncoder().encode(idx) { try? d.write(to: indexURL, options: .atomic) }
+            BeatsLibrary.shared.index = idx
+            await self.finishScan(idx, missing: missing)
+        }
+    }
+
+    private func finishScan(_ idx: SampleIndex, missing: [String]) {
+        sampleIndex = idx
+        scanning = false
+        var status = "Found \(idx.files.count) samples in \(idx.groups.count) kits."
+        if idx.lockedCount > 0 {
+            status += " Skipped \(idx.lockedCount) files in Native Instruments' locked formats (those play only inside Kontakt or Maschine)."
+        }
+        if !missing.isEmpty { status += " Not connected: \(missing.joined(separator: ", "))." }
+        scanStatus = status
     }
 
     // MARK: - Mixar

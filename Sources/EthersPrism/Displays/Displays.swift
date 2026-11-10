@@ -1,6 +1,7 @@
 import SwiftUI
 import WebKit
 import AVKit
+import AVFoundation
 import EthersPrismCore
 
 /// The display for each kind of output lives here, in the UI layer, separate from the adapters.
@@ -21,6 +22,8 @@ struct ResultDisplay: View {
             ImageResultView(output: snapshot.output)
         case .video:
             VideoResultView(output: snapshot.output)
+        case .audio:
+            AudioResultView(output: snapshot.output, snapshotID: snapshot.id)
         }
     }
 }
@@ -45,6 +48,8 @@ struct OutputPreview: View {
             ImageResultView(output: output, showPrompt: false)
         case .video:
             VideoResultView(output: output, showPrompt: false)
+        case .audio:
+            AudioResultView(output: output, compact: true)
         }
     }
 }
@@ -322,5 +327,133 @@ struct SVGView: NSViewRepresentable {
         </style></head><body>\(svg)</body></html>
         """
         view.loadHTMLString(html, baseURL: nil)
+    }
+}
+
+// MARK: - Audio
+
+/// One player for the whole app, so starting a beat stops the one before it.
+final class BeatPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
+    static let shared = BeatPlayer()
+    @Published private(set) var playingURL: URL?
+    private var player: AVAudioPlayer?
+
+    func play(_ url: URL, loop: Bool) {
+        stop()
+        guard let p = try? AVAudioPlayer(contentsOf: url) else { return }
+        p.numberOfLoops = loop ? -1 : 0
+        p.delegate = self
+        p.play()
+        player = p
+        playingURL = url
+    }
+
+    func toggle(_ url: URL, loop: Bool) {
+        if playingURL == url { stop() } else { play(url, loop: loop) }
+    }
+
+    func stop() {
+        player?.stop()
+        player = nil
+        playingURL = nil
+    }
+
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        DispatchQueue.main.async {
+            if self.player === player {
+                self.player = nil
+                self.playingURL = nil
+            }
+        }
+    }
+}
+
+struct AudioResultView: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject private var player = BeatPlayer.shared
+    @AppStorage("beatLoop") private var loop = true
+    let output: Output
+    var snapshotID: UUID?
+    var compact = false
+    @State private var peaks: [Float] = []
+
+    var body: some View {
+        if let url = model.assetURL(output), FileManager.default.fileExists(atPath: url.path) {
+            VStack(spacing: 10) {
+                Waveform(peaks: peaks, active: player.playingURL == url)
+                    .frame(height: compact ? 70 : 140)
+                    .contentShape(Rectangle())
+                    .onTapGesture { player.toggle(url, loop: loop) }
+                    .accessibilityLabel("Waveform. Click to play or stop.")
+                HStack {
+                    Button {
+                        player.toggle(url, loop: loop)
+                    } label: {
+                        Label(player.playingURL == url ? "Stop" : "Play",
+                              systemImage: player.playingURL == url ? "stop.fill" : "play.fill")
+                    }
+                    if !compact {
+                        Toggle("Loop", isOn: $loop).toggleStyle(.switch).controlSize(.small)
+                        if let id = snapshotID {
+                            Divider().frame(height: 16)
+                            Button { model.rateBeat(id, 1) } label: {
+                                Label("Like", systemImage: output.rating == 1 ? "hand.thumbsup.fill" : "hand.thumbsup")
+                            }
+                            .help("Teach Prism: more sounds and settings like this")
+                            Button { model.rateBeat(id, -1) } label: {
+                                Label("Not for me", systemImage: output.rating == -1 ? "hand.thumbsdown.fill" : "hand.thumbsdown")
+                            }
+                            .help("Teach Prism: fewer sounds like these")
+                        }
+                        Spacer()
+                        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                    }
+                }
+                if !compact {
+                    ScrollView {
+                        Text(markdown(output.text ?? ""))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Export writes the WAV and a MIDI file of the same beat (drums on channel 10, bass on channel 2).")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 6)
+                    }
+                }
+            }
+            .padding(compact ? 6 : 16)
+            .task(id: url) {
+                if let data = try? Data(contentsOf: url) { peaks = BeatAudio.peaks(ofWAV: data, count: 300) }
+                // While you're listening, each new version takes over so you hear dial changes right away.
+                if !compact, let playing = player.playingURL, playing != url { player.play(url, loop: loop) }
+            }
+        } else {
+            VStack(spacing: 6) {
+                Image(systemName: "waveform").font(.largeTitle).foregroundStyle(.tertiary)
+                Text("Audio file not found. Imported sessions don't include media files.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+struct Waveform: View {
+    let peaks: [Float]
+    let active: Bool
+
+    var body: some View {
+        Canvas { context, size in
+            guard !peaks.isEmpty else { return }
+            let w = size.width / CGFloat(peaks.count)
+            let mid = size.height / 2
+            var path = Path()
+            for (i, p) in peaks.enumerated() {
+                let h = max(1, CGFloat(p) * size.height * 0.95)
+                path.addRect(CGRect(x: CGFloat(i) * w, y: mid - h / 2, width: max(1, w * 0.7), height: h))
+            }
+            context.fill(path, with: .color(active ? Color.accentColor : Color.secondary))
+        }
+        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
     }
 }

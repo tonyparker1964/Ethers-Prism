@@ -100,10 +100,11 @@ public final class StdioMCPClient: @unchecked Sendable {
 
     /// Sends a request and waits for its answer (or the timeout).
     public func request(_ method: String, params: [String: Any] = [:], timeout: TimeInterval = 60) async throws -> [String: Any] {
-        lock.lock()
-        let id = nextID
-        nextID += 1
-        lock.unlock()
+        let id: Int = lock.withLock {
+            let id = nextID
+            nextID += 1
+            return id
+        }
         let payload = try JSONSerialization.data(withJSONObject: [
             "jsonrpc": "2.0", "id": id, "method": method, "params": params
         ] as [String: Any])
@@ -125,9 +126,7 @@ public final class StdioMCPClient: @unchecked Sendable {
                 try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                 let err = PrismError.mixar("no answer within \(Int(timeout)) seconds.")
                 // Release the waiting request too, so the group can finish.
-                self.lock.lock()
-                let waiting = self.pending.removeValue(forKey: id)
-                self.lock.unlock()
+                let waiting = self.lock.withLock { self.pending.removeValue(forKey: id) }
                 waiting?.resume(throwing: err)
                 throw err
             }
@@ -135,9 +134,7 @@ public final class StdioMCPClient: @unchecked Sendable {
             guard let first = try await group.next() else { throw PrismError.emptyResponse }
             return first
         }
-        lock.lock()
-        pending.removeValue(forKey: id)
-        lock.unlock()
+        _ = lock.withLock { pending.removeValue(forKey: id) }
         guard let obj = try JSONSerialization.jsonObject(with: line) as? [String: Any] else { throw PrismError.emptyResponse }
         if let err = obj["error"] as? [String: Any] {
             throw PrismError.mixar(err["message"] as? String ?? "the request failed.")

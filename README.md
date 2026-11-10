@@ -4,7 +4,7 @@
 
 Describe a goal and Ethers Prism builds you an editor: dials with named ends, plus fixed requirements. Move the dials, watch previews change, sweep one dial across its range, branch through history, compare states, render the version you choose, and export it with an authorship log. Choosing and editing the dials is part of the authorship.
 
-Text and Image are fully working. Video (storyboards), Music (written sketches), Code (previews) and Research (plans) are labeled unfinished.
+Text, Image, 3D Stage and Beats are fully working. Video (storyboards), Music Sketch (written sketches), Code (previews) and Research (plans) are labeled unfinished.
 
 ## Setup
 
@@ -12,6 +12,8 @@ Needs macOS 14 or later, Xcode 15 or later, Apple Silicon.
 
 1. Double-click `Package.swift` to open it in Xcode.
 2. Choose the **EthersPrism** scheme and **My Mac**, then press **⌘R** to run. Press **⌘U** to run the tests.
+
+**Put it in Applications:** in Terminal, in this folder, run `./install-app.sh`. It builds a release version and installs **Ethers Prism.app** (with its icon) in your Applications folder, so it opens from Launchpad, Spotlight or the Dock without Xcode. Run it again after pulling updates.
 
 After building once, you can also start it by double-clicking **Ethers Prism.app** in this folder. It launches your latest Xcode build. From Terminal: `swift run EthersPrism` and `swift test`.
 
@@ -26,6 +28,7 @@ Each job has its own agent and model. You still choose the dials and the results
 | Art Director | Turns dials and requirements into image prompts | LM Studio · Qwen3 8B |
 | Coder | The Code field | LM Studio · Qwen3 Coder 30B |
 | Checker | Reviews each result against the fixed requirements; flags with quoted evidence, never rewrites | LM Studio · Qwen3 8B |
+| Music Producer | For Beats: reads the goal and your sample library, picks the style, up to three kits and the starting dial positions | LM Studio · Qwen3 8B |
 
 Each agent can use Claude (Anthropic), LM Studio, Ollama or Mock. **Teach by example** (on by default): before each job, the Writer, Coder, Art Director and Dial Designer see up to 3 of your recent starred results or hand edits, so they learn your taste. Nothing is trained and nothing leaves your Mac. Agents that must return data (dials, image prompts, reviews) ask local servers for JSON-schema output, and small slips are repaired.
 
@@ -47,6 +50,20 @@ Two separate fields make real clips on this Mac with **LTX Video** through Comfy
 The Art Director agent turns the goal and dials into the long, descriptive prompt LTX Video needs; Length and Faithfulness also set numbers directly. Previews are 1 second at 512 px; full renders run 1–8 seconds at 768 px and can take a long time on a Mac, so video previews start only when you press Preview. Starting another job stops the one in progress, and LM Studio's models are unloaded while a clip renders.
 
 ComfyUI needs two files: `ltx-video-2b-v0.9.5.safetensors` in `models/checkpoints` and `t5xxl_fp16.safetensors` in `models/text_encoders` (the fp8 encoder doesn't run on Apple Silicon). Settings → Video → Check ComfyUI confirms both. Clips are saved as MP4 (animated WebP on older ComfyUI).
+
+## Beats (Settings → Sounds)
+
+The **Beats (your samples)** field makes real audio from your own one-shot samples: Native Instruments Maschine expansions, Battery kits and any folders of WAV, AIFF or FLAC files. No AI and no internet are involved, and the same dials always give the same beat.
+
+1. **Settings → Sounds → Add Folders…** and pick the drive or folders with your samples, for example the Native Instruments drive. The scan sorts every file into kick, snare, clap, closed hat, open hat, percussion, tom, cymbal or bass by its name and folders, and groups files by kit or expansion. Loops, FX and vocals are skipped. The result is saved, so the next launch doesn't rescan.
+2. Pick the **Beats** field and type a goal that names a style: *boom bap*, *trap*, *house*, *techno*, *drum and bass*, *lo-fi*, *afro / amapiano* or *reggaeton*. Add a kit or expansion name to use only that kit (for example "dusty lo-fi with Lazer Dice").
+3. **Music Producer agent:** when it's set up (Settings → Agents), Suggest Dials asks it to pick the style, up to three kits from your library and where each dial starts. Its picks appear as *Style:* and *Kit:* requirements and dial positions, all of which you can change or delete; suggesting again replaces only its own picks. With no AI at all (Mock), or if the model can't answer, the **built-in producer** takes over: it reads mood words in your goal (slow, dusty, dark, bright, busy, heavy bass…), picks the style and kits whose names match, and says what it heard.
+4. **Suggest Dials** gives Tempo, Swing, Density, Variation, Tone, Bass, Kit and Pattern. Previews are 4 bars; **Render Full Quality** makes 16 bars with fills. Sweep the **Kit** dial to hear the same groove through five different kits.
+5. **Fixed requirements:** *Must include* limits the beat to kits with that name; *Must avoid* leaves out any sample whose name or folder contains those words.
+6. **Teach it your taste:** under each beat, press **Like** or **Not for me**. Prism remembers which sounds, kits and dial positions you like (in a small file on this Mac), plays liked sounds more often, leaves out ones you turned down, and both producers start from what you've liked. Settings → Sounds → **Forget My Ratings** starts over.
+7. **Export** writes the WAV, a MIDI file of the same beat (General MIDI drums on channel 10, bass on channel 2) for Maschine, Logic or any DAW, the session file and the authorship log.
+
+Kontakt instruments store their samples in Native Instruments' locked formats (.ncw, .nkx). Those only play inside Kontakt, so the scan counts and skips them. If a kit has no bass samples, a simple built-in sine sub plays the bassline.
 
 ## Providers (Settings, ⌘,)
 

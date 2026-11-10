@@ -12,6 +12,7 @@ struct SettingsView: View {
             imageTab.tabItem { Label("Images", systemImage: "photo") }
             videoTab.tabItem { Label("Video", systemImage: "film") }
             mixarTab.tabItem { Label("Mixar", systemImage: "cube") }
+            soundsTab.tabItem { Label("Sounds", systemImage: "waveform") }
             storageTab.tabItem { Label("Storage", systemImage: "folder") }
         }
         .frame(width: 640, height: 620)
@@ -181,6 +182,57 @@ struct SettingsView: View {
                 }
                 Text("Previews are 1 second at 512 px; full renders use the Length dial (1–8 seconds) at 768 px. On a Mac, a full render can take a long time, so try ideas with previews first. While a clip renders, LM Studio's models are unloaded to make room.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var soundsTab: some View {
+        Form {
+            Section {
+                Text("The Beats field plays your own samples: Maschine expansions, Battery kits and any folders of WAV or AIFF one-shots. Kontakt instruments keep their samples in Native Instruments' locked formats, so those are skipped here.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if model.soundFolders.isEmpty {
+                    Text("No folders yet.").foregroundStyle(.secondary)
+                }
+                ForEach(model.soundFolders, id: \.self) { path in
+                    HStack {
+                        Image(systemName: FileManager.default.fileExists(atPath: path) ? "folder" : "exclamationmark.triangle")
+                            .foregroundStyle(FileManager.default.fileExists(atPath: path) ? Color.secondary : Color.orange)
+                        Text(path).font(.callout).lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        Button(role: .destructive) { model.removeSoundFolder(path) } label: { Image(systemName: "minus.circle") }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Remove \(path)")
+                    }
+                }
+                HStack {
+                    Button("Add Folders…") { model.addSoundFolders() }
+                    Button("Scan Again") { model.scanSounds() }
+                        .disabled(model.soundFolders.isEmpty || model.scanning)
+                    if model.scanning { ProgressView().controlSize(.small) }
+                }
+                if let s = model.scanStatus { Text(s).font(.caption).foregroundStyle(.secondary) }
+            } header: {
+                Text("Sample folders")
+            }
+            if !model.sampleIndex.isEmpty {
+                Section("What was found") {
+                    ForEach(SampleRole.allCases, id: \.self) { role in
+                        LabeledContent(role.label) { Text("\(model.sampleIndex.count(role))").monospacedDigit() }
+                    }
+                    LabeledContent("Kits") { Text("\(model.sampleIndex.groups.count)").monospacedDigit() }
+                    let taste = BeatsLibrary.shared.taste
+                    LabeledContent("Taste learned from your ratings") {
+                        Text(taste.isEmpty ? "none yet" : "\(taste.likedKits.count) liked kits, \(taste.dislikedKits.count) turned down")
+                    }
+                    .id(model.tasteVersion)
+                    if !taste.isEmpty {
+                        Button("Forget My Ratings") { model.forgetTaste() }
+                    }
+                    Text("The Kit dial steps through kits that have a kick and a snare or clap. Put a kit's name in your goal, or in a Must include requirement, to use only kits with that name. A Must avoid requirement leaves out any sample whose name or folder contains those words.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
         .formStyle(.grouped)

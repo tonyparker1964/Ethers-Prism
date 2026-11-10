@@ -2,7 +2,7 @@ import Foundation
 
 /// One job inside the instrument. Each job gets its own model; the person still steers and chooses.
 public enum AgentRole: String, Codable, CaseIterable, Hashable, Sendable {
-    case dialDesigner, writer, artDirector, coder, checker
+    case dialDesigner, writer, artDirector, coder, checker, producer
 
     public var title: String {
         switch self {
@@ -11,6 +11,7 @@ public enum AgentRole: String, Codable, CaseIterable, Hashable, Sendable {
         case .artDirector: return "Art Director"
         case .coder: return "Coder"
         case .checker: return "Checker"
+        case .producer: return "Music Producer"
         }
     }
 
@@ -21,6 +22,7 @@ public enum AgentRole: String, Codable, CaseIterable, Hashable, Sendable {
         case .artDirector: return "Turns dials and requirements into image prompts."
         case .coder: return "Writes code for the Code field."
         case .checker: return "Reviews each result against the fixed requirements and flags problems. Never rewrites."
+        case .producer: return "For Beats: reads your goal and your sample library, then picks the style, the kits and where the dials start."
         }
     }
 }
@@ -82,7 +84,8 @@ public struct AgentTeam: Codable, Hashable, Sendable {
         AgentAssignment(role: .writer, backend: .lmStudio, model: smallLocalModel),
         AgentAssignment(role: .artDirector, backend: .lmStudio, model: smallLocalModel),
         AgentAssignment(role: .coder, backend: .lmStudio, model: coderModel),
-        AgentAssignment(role: .checker, backend: .lmStudio, model: smallLocalModel)
+        AgentAssignment(role: .checker, backend: .lmStudio, model: smallLocalModel),
+        AgentAssignment(role: .producer, backend: .lmStudio, model: smallLocalModel)
     ])
 
     public static let mock = AgentTeam(assignments: AgentRole.allCases.map {
@@ -133,6 +136,8 @@ public enum Checker {
 
     /// Nil when there is nothing to check against.
     public static func request(for output: Output, constraints: [Constraint]) -> TextRequest? {
+        // A beat's requirements are applied to sample choice directly; there's no text to review.
+        if output.kind == .audio { return nil }
         let fixed = Compiler.describe(constraints)
         let isVideo = output.kind == .video
         let content = isVideo ? output.imagePrompt : (output.text ?? output.imagePrompt)
@@ -201,12 +206,13 @@ public enum TeachByExample {
                     entry = "Goal: \(goal)\nCode they kept:\n\(t.trimmed.prefix(1500))"
                 case .artDirector:
                     guard snap.chosen, let p = snap.output.imagePrompt, !p.trimmed.isEmpty else { continue }
-                    entry = "Goal: \(goal)\nImage prompt behind a picture they starred:\n\(p.trimmed)"
+                    entry = "Goal: \(goal)\nPrompt behind \(snap.output.kind == .video ? "a clip" : "a picture") they starred:\n\(p.trimmed)"
                 case .dialDesigner:
                     guard snap.chosen, !snap.state.dials.isEmpty else { continue }
                     let dials = snap.state.dials.map { "- \($0.name): \($0.lowPole) ↔ \($0.highPole)" }.joined(separator: "\n")
                     entry = "Goal: \(goal)\nDials in an editor they used and starred a result from:\n\(dials)"
-                case .checker:
+                case .checker, .producer:
+                    // The Checker never imitates; the Music Producer learns from Like / Not for me instead.
                     entry = nil
                 }
                 guard let e = entry, seen.insert(e).inserted else { continue }

@@ -31,11 +31,15 @@ public struct Generated: Sendable {
     public var output: Output
     public var asset: Data?
     public var assetExtension: String?
+    /// Companion files saved next to the asset under the same name, keyed by extension
+    /// (for example the MIDI file that goes with a beat).
+    public var extraAssets: [String: Data]
 
-    public init(output: Output, asset: Data? = nil, assetExtension: String? = nil) {
+    public init(output: Output, asset: Data? = nil, assetExtension: String? = nil, extraAssets: [String: Data] = [:]) {
         self.output = output
         self.asset = asset
         self.assetExtension = assetExtension
+        self.extraAssets = extraAssets
     }
 }
 
@@ -195,7 +199,7 @@ public struct ImageAdapter: DomainAdapter {
 // MARK: - Registry
 
 public enum Domains {
-    public static let all: [any DomainAdapter] = [text, ImageAdapter(), BlenderStageAdapter(), TextToVideoAdapter(), ImageToVideoAdapter(), video, music, code, research]
+    public static let all: [any DomainAdapter] = [text, ImageAdapter(), BlenderStageAdapter(), TextToVideoAdapter(), ImageToVideoAdapter(), BeatsAdapter(), video, music, code, research]
 
     public static func adapter(for id: String) -> any DomainAdapter {
         all.first { $0.id == id } ?? text
@@ -219,7 +223,7 @@ public enum Domains {
         previewTokens: 800, renderTokens: 4000)
 
     public static let music = TextAdapter(
-        id: "music", name: "Music", symbol: "music.note",
+        id: "music", name: "Music Sketch", symbol: "music.note",
         status: .unfinished("Direction and structure sketch only. No audio is generated."),
         capabilities: OutputCapabilities(kind: .text, editable: true, exportFormats: ["md"]),
         dialHint: "energy, complexity, era, mood, instrumentation, genre strictness, groove",
