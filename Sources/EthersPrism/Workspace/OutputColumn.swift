@@ -42,8 +42,12 @@ struct OutputColumn: View {
                 ResultDisplay(snapshot: snap, editable: model.adapter.capabilities.editable)
                     .id(snap.id)
             } else {
-                VStack(spacing: 10) {
-                    Image(systemName: "dial.medium").font(.system(size: 40)).foregroundStyle(.tertiary)
+                VStack(spacing: 14) {
+                    if AppIcon.image != nil {
+                        AppLogo(size: 220).shadow(color: .purple.opacity(0.35), radius: 24)
+                    } else {
+                        Image(systemName: "dial.medium").font(.system(size: 40)).foregroundStyle(.tertiary)
+                    }
                     Text("Don't ask for the thing. Build the instrument, then play it.")
                         .foregroundStyle(.secondary)
                 }

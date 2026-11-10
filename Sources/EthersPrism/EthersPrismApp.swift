@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MachO
 
 @main
 struct EthersPrismApp: App {
@@ -8,20 +9,7 @@ struct EthersPrismApp: App {
     init() {
         // Gives the app a normal Dock icon and keyboard focus when run from a Swift package.
         NSApplication.shared.setActivationPolicy(.regular)
-        if let icon = Self.appIcon() { NSApplication.shared.applicationIconImage = icon }
-    }
-
-    /// The Ether's Prism logo, from the package's resource bundle next to the executable.
-    /// Looked up by hand (not Bundle.module) so a missing file can never crash the app.
-    static func appIcon() -> NSImage? {
-        let exe = Bundle.main.executableURL?.resolvingSymlinksInPath().deletingLastPathComponent()
-        let places = [exe, Bundle.main.resourceURL, Bundle.main.bundleURL].compactMap { $0 }
-        for dir in places {
-            let url = dir.appendingPathComponent("EthersPrism_EthersPrism.bundle/AppIcon.png")
-            if let img = NSImage(contentsOf: url) { return img }
-            if let img = NSImage(contentsOf: dir.appendingPathComponent("AppIcon.png")) { return img }
-        }
-        return nil
+        if let icon = AppIcon.image { NSApplication.shared.applicationIconImage = icon }
     }
 
     var body: some Scene {
@@ -32,6 +20,13 @@ struct EthersPrismApp: App {
                 .onAppear { NSApplication.shared.activate(ignoringOtherApps: true) }
         }
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Ethers Prism") {
+                    var options: [NSApplication.AboutPanelOptionKey: Any] = [:]
+                    if let icon = AppIcon.image { options[.applicationIcon] = icon }
+                    NSApplication.shared.orderFrontStandardAboutPanel(options: options)
+                }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("New Session") { model.newSession() }
                     .keyboardShortcut("n")
@@ -57,6 +52,33 @@ struct EthersPrismApp: App {
         Settings {
             SettingsView()
                 .environmentObject(model)
+        }
+    }
+}
+
+/// The Ether's Prism logo, embedded in the executable at link time (see Package.swift),
+/// so it is there however the app is launched.
+enum AppIcon {
+    static let image: NSImage? = {
+        var size: UInt = 0
+        let header = #dsohandle.assumingMemoryBound(to: mach_header_64.self)
+        guard let bytes = getsectiondata(header, "__TEXT", "__app_icon", &size), size > 0 else { return nil }
+        return NSImage(data: Data(bytes: bytes, count: Int(size)))
+    }()
+}
+
+/// The logo at any size; shows nothing if it couldn't be read.
+struct AppLogo: View {
+    var size: CGFloat
+
+    var body: some View {
+        if let img = AppIcon.image {
+            Image(nsImage: img)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: size, height: size)
+                .accessibilityLabel("Ether's Prism")
         }
     }
 }

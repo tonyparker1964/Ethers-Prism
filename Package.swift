@@ -6,6 +6,9 @@ import Foundation
 // (bundle id, name) even when the app runs straight from Xcode or `swift run`.
 let infoPlist = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
     .appendingPathComponent("Support/Info.plist").path
+// The app icon is embedded the same way, so the Dock shows it however the app is launched.
+let appIcon = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    .appendingPathComponent("Support/AppIcon-512.png").path
 
 let package = Package(
     name: "EthersPrism",
@@ -21,9 +24,10 @@ let package = Package(
         .executableTarget(
             name: "EthersPrism",
             dependencies: ["EthersPrismCore"],
-            resources: [.copy("Resources/AppIcon.png")],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT",
-                                           "-Xlinker", "__info_plist", "-Xlinker", infoPlist])]),
+                                           "-Xlinker", "__info_plist", "-Xlinker", infoPlist,
+                                                          "-Xlinker", "-sectcreate", "-Xlinker", "__TEXT",
+                                                          "-Xlinker", "__app_icon", "-Xlinker", appIcon])]),
         .testTarget(name: "EthersPrismCoreTests", dependencies: ["EthersPrismCore"])
     ]
 )

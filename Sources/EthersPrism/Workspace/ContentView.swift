@@ -16,6 +16,18 @@ struct ContentView: View {
                         }
                 }
             }
+            .safeAreaInset(edge: .top) {
+                HStack(spacing: 10) {
+                    AppLogo(size: 40)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Ether's Prism").font(.headline)
+                        Text("Build the instrument, then play it.").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
             .navigationSplitViewColumnWidth(min: 190, ideal: 230)
             .toolbar {
                 ToolbarItem {
