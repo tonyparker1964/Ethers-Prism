@@ -212,7 +212,8 @@ struct VideoResultView: View {
                 if ["webp", "gif"].contains(url.pathExtension.lowercased()) {
                     AnimatedImageView(url: url)
                 } else {
-                    LoopingPlayerView(url: url)
+                    // Blender animations carry the song they pulse to, so the main player plays sound.
+                    LoopingPlayerView(url: url, muted: !(showPrompt && output.provider == "Blender"))
                 }
             } else {
                 VStack(spacing: 6) {
@@ -244,6 +245,7 @@ struct VideoResultView: View {
 /// AVPlayerView that loops one file and swaps players only when the file changes.
 struct LoopingPlayerView: NSViewRepresentable {
     let url: URL
+    var muted = true
 
     final class Coordinator {
         var url: URL?
@@ -266,7 +268,7 @@ struct LoopingPlayerView: NSViewRepresentable {
 
     private func load(_ view: AVPlayerView, _ c: Coordinator) {
         let player = AVQueuePlayer()
-        player.isMuted = true
+        player.isMuted = muted
         c.looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
         c.url = url
         view.player = player

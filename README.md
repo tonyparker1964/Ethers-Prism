@@ -37,6 +37,8 @@ Each agent can use Claude (Anthropic), LM Studio, Ollama or Mock. **Teach by exa
 
 Mixar is an AI 3D editor built on Blender. Ethers Prism connects through Mixar's **Connect MCP** (profile menu → Connect MCP → Turn on) and lists Mixar's tools. Inspecting and rendering in Mixar are free; Mixar's AI generation costs Mixar credits. The **3D Stage (Blender)** field is the free, local alternative: type the path to a GLB, GLTF, OBJ or FBX file as the goal (or anything else for a sample model). Its dials set camera orbit, height, lens, lighting contrast and mood. Previews render with Eevee, full renders with Cycles on the GPU; the first Cycles render compiles GPU code and is slow, later ones are fast.
 
+**Animation (Blender)** renders a spinning planet as an MP4, free and local. Press **Choose Song…** and the planet and its atmosphere pulse to the music, and the song is in the clip (with no song it pulses at 90 BPM). **Choose Planet Image…** wraps your own image around it; otherwise the surface is generated. Dials: Spin speed, Beat strength, Glow, Mood (warm fire to cool ice), Camera drift, Length (2–10 seconds, never longer than the song). Previews are 2 seconds at 640×360 and start only when you press Preview; full renders are 720p at 24 fps with Eevee.
+
 ## Video (Settings → Video)
 
 Two separate fields make real clips on this Mac with **LTX Video** through ComfyUI (the same ComfyUI address as images):
