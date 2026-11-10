@@ -78,7 +78,7 @@ struct OutputColumn: View {
                 .fixedSize()
                 .help("Model: \(snap.output.model)")
             } else {
-                Text("No result yet").foregroundStyle(.secondary)
+                Text("No result yet").foregroundStyle(.secondary).lineLimit(1).fixedSize()
             }
             if case .working(let what) = model.phase {
                 ProgressView().controlSize(.small)
