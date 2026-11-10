@@ -182,6 +182,10 @@ struct Thumbnail: View {
             Image(nsImage: img).resizable().scaledToFill()
                 .frame(width: 30, height: 30)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
+        } else if output.kind == .video {
+            Image(systemName: "film")
+                .frame(width: 30, height: 30)
+                .foregroundStyle(.secondary)
         } else {
             Image(systemName: icon(for: origin))
                 .frame(width: 30, height: 30)

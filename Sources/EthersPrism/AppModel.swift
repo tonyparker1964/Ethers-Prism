@@ -49,6 +49,12 @@ final class AppModel: ObservableObject {
     @Published var comfy: ComfyUISettings {
         didSet { if let d = try? JSONEncoder().encode(comfy) { defaults.set(d, forKey: "comfy") } }
     }
+    @Published var comfyVideo: ComfyVideoSettings {
+        didSet { if let d = try? JSONEncoder().encode(comfyVideo) { defaults.set(d, forKey: "comfyVideo") } }
+    }
+    @Published var videoModelChoices: [String] = []
+    @Published var videoEncoderChoices: [String] = []
+    @Published var videoStatus: String?
     @Published var hasAPIKey: Bool
     @Published var comfyModels: [String] = []
     @Published var comfyStatus: String?
@@ -80,6 +86,11 @@ final class AppModel: ObservableObject {
         } else {
             comfy = ComfyUISettings()
         }
+        if let d = UserDefaults.standard.data(forKey: "comfyVideo"), let v = try? JSONDecoder().decode(ComfyVideoSettings.self, from: d) {
+            comfyVideo = v
+        } else {
+            comfyVideo = ComfyVideoSettings()
+        }
         sessions = store.loadAll()
         templates = store.loadTemplates()
         if sessions.isEmpty { newSession() } else { selectedID = sessions.first?.id }
@@ -101,7 +112,7 @@ final class AppModel: ObservableObject {
         if team.teachByExample, let examples = TeachByExample.examples(for: role, in: sessions) {
             worker = ExampleTaughtTextProvider(inner: base, examples: examples)
         }
-        if team.memoryHandoff && a.backend.isLocal && imageProviderKind == "comfyui" {
+        if team.memoryHandoff && a.backend.isLocal && (imageProviderKind == "comfyui" || adapter.capabilities.needsVideoProvider) {
             return MemoryAwareTextProvider(inner: worker, comfyURL: comfy.baseURL)
         }
         return worker
@@ -120,13 +131,19 @@ final class AppModel: ObservableObject {
     var providers: ProviderSet {
         var agents: [AgentRole: any TextProvider] = [:]
         for role in AgentRole.allCases { agents[role] = provider(for: role) }
-        return ProviderSet(text: provider(for: .writer), image: imageProvider, agents: agents)
+        return ProviderSet(text: provider(for: .writer), image: imageProvider, agents: agents, video: videoProvider)
+    }
+
+    /// Video always runs through ComfyUI (same address as images) with LTX Video.
+    var videoProvider: any VideoProvider {
+        ComfyVideoProvider(baseURL: comfy.baseURL, settings: comfyVideo,
+                           lmStudioURL: team.memoryHandoff ? team.lmStudioURL : nil)
     }
 
     /// The agents the current field actually uses.
     var activeRoles: [AgentRole] {
         var roles: [AgentRole] = [.dialDesigner]
-        if adapter.capabilities.needsImageProvider { roles.append(.artDirector) }
+        if adapter.capabilities.needsImageProvider || adapter.capabilities.needsVideoProvider { roles.append(.artDirector) }
         else if adapter.capabilities.kind == .code { roles.append(.coder) }
         else { roles.append(.writer) }
         if team.checkerEnabled { roles.append(.checker) }
@@ -145,6 +162,10 @@ final class AppModel: ObservableObject {
         }
         if adapter.capabilities.needsImageProvider && imageProviderKind == "comfyui" && comfy.checkpoint.trimmed.isEmpty {
             return "Choose a ComfyUI model in Settings before generating images."
+        }
+        if adapter.capabilities.needsVideoProvider
+            && (comfyVideo.checkpoint.trimmed.isEmpty || comfyVideo.textEncoder.trimmed.isEmpty) {
+            return "Choose the LTX Video model and its text encoder in Settings → Video."
         }
         return nil
     }
@@ -283,7 +304,8 @@ final class AppModel: ObservableObject {
 
     /// Waits until the dials stop moving, then previews once.
     func dialsChanged() {
-        guard autoPreview else { return }
+        // Video previews take minutes, so they start only when the person presses Preview.
+        guard autoPreview, !adapter.capabilities.needsVideoProvider else { return }
         debounceTask?.cancel()
         debounceTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 750_000_000)
@@ -530,6 +552,33 @@ final class AppModel: ObservableObject {
         } catch {
             comfyModels = []
             comfyStatus = error.localizedDescription
+        }
+    }
+
+    /// Reads which LTX checkpoints and text encoders ComfyUI can load.
+    func checkVideo() async {
+        videoStatus = "Checking…"
+        let client = ComfyClient(baseURL: comfy.baseURL)
+        do {
+            let all = try await client.options(node: "CheckpointLoaderSimple", input: "ckpt_name")
+            let encoders = try await client.options(node: "CLIPLoader", input: "clip_name")
+            _ = try await client.options(node: "LTXVImgToVideo", input: "vae")
+            videoModelChoices = all.filter { $0.lowercased().contains("ltx") }
+            videoEncoderChoices = encoders.filter { $0.lowercased().contains("t5") }
+            let hasModel = videoModelChoices.contains(comfyVideo.checkpoint)
+            let hasEncoder = videoEncoderChoices.contains(comfyVideo.textEncoder)
+            if !hasModel, let first = videoModelChoices.first { comfyVideo.checkpoint = first }
+            if !hasEncoder, let first = videoEncoderChoices.first { comfyVideo.textEncoder = first }
+            switch (videoModelChoices.isEmpty, videoEncoderChoices.isEmpty) {
+            case (true, true): videoStatus = "ComfyUI is ready for LTX Video, but the model and the T5 text encoder aren't downloaded yet."
+            case (true, false): videoStatus = "The LTX Video model isn't in ComfyUI's checkpoints folder yet."
+            case (false, true): videoStatus = "The T5 text encoder isn't in ComfyUI's text encoders folder yet."
+            case (false, false): videoStatus = "Ready. LTX Video and its text encoder were found."
+            }
+        } catch {
+            videoModelChoices = []
+            videoEncoderChoices = []
+            videoStatus = error.localizedDescription
         }
     }
 

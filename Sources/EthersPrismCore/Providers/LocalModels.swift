@@ -153,11 +153,16 @@ public enum LocalMemory {
 
     /// Unloads large models from LM Studio so ComfyUI has room. Small models are left loaded.
     public static func unloadLargeLMStudioModels(baseURL: String) async {
+        await unloadLMStudioModels(baseURL: baseURL, onlyLarge: true)
+    }
+
+    /// Unloads LM Studio models: only large ones, or all of them (video needs every gigabyte).
+    public static func unloadLMStudioModels(baseURL: String, onlyLarge: Bool) async {
         guard let list = OpenAICompatibleTextProvider.url(baseURL, "/api/v1/models"),
               let unload = OpenAICompatibleTextProvider.url(baseURL, "/api/v1/models/unload"),
               let data = try? await URLSession.shared.data(from: list).0,
               let json = try? JSONSerialization.jsonObject(with: data) else { return }
-        for id in loadedInstanceIDs(in: json) where isLarge(id) {
+        for id in loadedInstanceIDs(in: json) where !onlyLarge || isLarge(id) {
             var req = URLRequest(url: unload)
             req.httpMethod = "POST"
             req.timeoutInterval = 30

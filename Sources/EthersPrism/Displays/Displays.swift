@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import AVKit
 import EthersPrismCore
 
 /// The display for each kind of output lives here, in the UI layer, separate from the adapters.
@@ -18,6 +19,8 @@ struct ResultDisplay: View {
             StoryboardResultView(snapshot: snapshot, editable: editable)
         case .image:
             ImageResultView(output: snapshot.output)
+        case .video:
+            VideoResultView(output: snapshot.output)
         }
     }
 }
@@ -40,6 +43,8 @@ struct OutputPreview: View {
             ScrollView { StoryboardCards(text: output.text ?? "").padding(10) }
         case .image:
             ImageResultView(output: output, showPrompt: false)
+        case .video:
+            VideoResultView(output: output, showPrompt: false)
         }
     }
 }
@@ -192,6 +197,103 @@ struct ImageResultView: View {
             Text(text).font(.callout).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Plays a clip on a loop. MP4 plays in a standard player; an animated WebP (older ComfyUI) animates in an image view.
+struct VideoResultView: View {
+    @EnvironmentObject var model: AppModel
+    let output: Output
+    var showPrompt = true
+
+    var body: some View {
+        VStack(spacing: 8) {
+            if let url = model.assetURL(output), FileManager.default.fileExists(atPath: url.path) {
+                if ["webp", "gif"].contains(url.pathExtension.lowercased()) {
+                    AnimatedImageView(url: url)
+                } else {
+                    LoopingPlayerView(url: url)
+                }
+            } else {
+                VStack(spacing: 6) {
+                    Image(systemName: "film").font(.largeTitle).foregroundStyle(.tertiary)
+                    Text("Video file not found. Imported sessions don't include media files.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            if showPrompt {
+                if let summary = output.text {
+                    Text(summary).font(.caption).foregroundStyle(.secondary)
+                }
+                if let prompt = output.imagePrompt {
+                    DisclosureGroup("Video prompt") {
+                        Text(prompt).font(.caption).textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .font(.caption)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                }
+            }
+        }
+        .padding(showPrompt ? 12 : 0)
+    }
+}
+
+/// AVPlayerView that loops one file and swaps players only when the file changes.
+struct LoopingPlayerView: NSViewRepresentable {
+    let url: URL
+
+    final class Coordinator {
+        var url: URL?
+        var looper: AVPlayerLooper?
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.controlsStyle = .floating
+        view.videoGravity = .resizeAspect
+        load(view, context.coordinator)
+        return view
+    }
+
+    func updateNSView(_ view: AVPlayerView, context: Context) {
+        if context.coordinator.url != url { load(view, context.coordinator) }
+    }
+
+    private func load(_ view: AVPlayerView, _ c: Coordinator) {
+        let player = AVQueuePlayer()
+        player.isMuted = true
+        c.looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
+        c.url = url
+        view.player = player
+        player.play()
+    }
+
+    static func dismantleNSView(_ view: AVPlayerView, coordinator: Coordinator) {
+        view.player?.pause()
+        coordinator.looper = nil
+    }
+}
+
+struct AnimatedImageView: NSViewRepresentable {
+    let url: URL
+
+    func makeNSView(context: Context) -> NSImageView {
+        let v = NSImageView()
+        v.animates = true
+        v.imageScaling = .scaleProportionallyUpOrDown
+        v.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        v.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        v.image = NSImage(contentsOf: url)
+        return v
+    }
+
+    func updateNSView(_ v: NSImageView, context: Context) {
+        v.image = NSImage(contentsOf: url)
     }
 }
 

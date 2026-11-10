@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 import EthersPrismCore
 
 struct ControlsColumn: View {
@@ -32,11 +34,23 @@ struct GoalSection: View {
                 if let note = model.adapter.status.note {
                     Banner(style: .info, text: "Unfinished field. \(note)")
                 }
-                TextField("What do you want to make?", text: model.goalBinding, axis: .vertical)
+                TextField(placeholder, text: model.goalBinding, axis: .vertical)
                     .lineLimit(2...6)
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Goal")
+                if model.adapter.id == "i2v" {
+                    StartImageRow()
+                }
                 HStack {
+                    if model.adapter.id == "i2v" {
+                        Button { chooseFile(types: StartImage.extensions, keepDescription: true) } label: {
+                            Label("Choose Image…", systemImage: "photo")
+                        }
+                    } else if model.adapter.id == "stage" {
+                        Button { chooseFile(types: ["glb", "gltf", "obj", "fbx"], keepDescription: false) } label: {
+                            Label("Choose Model…", systemImage: "cube")
+                        }
+                    }
                     Button {
                         Task { await model.suggestDials() }
                     } label: {
@@ -48,6 +62,48 @@ struct GoalSection: View {
                 }
             }
             .padding(4)
+        }
+    }
+
+    private var placeholder: String {
+        switch model.adapter.id {
+        case "i2v": return "Choose a starting image, then say how it should move"
+        case "t2v": return "Describe the shot: who or what, doing what, where"
+        case "stage": return "Path to a model file (or leave empty for the sample)"
+        default: return "What do you want to make?"
+        }
+    }
+
+    /// Puts the chosen file's path in the goal. For Image to Video the words about motion are kept.
+    private func chooseFile(types: [String], keepDescription: Bool) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = types.compactMap { UTType(filenameExtension: $0) }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let words = keepDescription ? StartImage.split(model.current?.goal ?? "").description : ""
+        model.goalBinding.wrappedValue = words.isEmpty ? url.path : "\(url.path)\n\(words)"
+    }
+}
+
+/// Shows the starting image for Image to Video, so it is clear what the clip begins from.
+struct StartImageRow: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        let path = StartImage.split(model.current?.goal ?? "").path
+        HStack(spacing: 10) {
+            if let path, let img = NSImage(contentsOfFile: path) {
+                Image(nsImage: img).resizable().scaledToFit()
+                    .frame(width: 64, height: 64)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                Text((path as NSString).lastPathComponent).font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle)
+            } else {
+                Image(systemName: "photo.badge.plus").font(.title2).foregroundStyle(.tertiary)
+                Text(path == nil ? "No starting image yet." : "The starting image can't be opened.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 }
@@ -216,7 +272,12 @@ struct PlaySection: View {
     var body: some View {
         GroupBox("Play") {
             VStack(alignment: .leading, spacing: 10) {
-                Toggle("Preview automatically when a dial stops moving", isOn: $model.autoPreview)
+                if model.adapter.capabilities.needsVideoProvider {
+                    Text("Video previews take a few minutes on a Mac, so set the dials first, then press Preview. Starting another preview stops the one in progress.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Toggle("Preview automatically when a dial stops moving", isOn: $model.autoPreview)
+                }
                 HStack {
                     Button { model.generate(.preview, force: true) } label: { Label("Preview", systemImage: "eye") }
                     Button { model.exploreNearby() } label: { Label("Explore Nearby", systemImage: "dice") }

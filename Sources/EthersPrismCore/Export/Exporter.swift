@@ -48,14 +48,14 @@ public enum Exporter {
         l += ["", "## Final selection", "\(final.origin.label) from \(f.string(from: final.createdAt))\(final.chosen ? ", marked as chosen" : "")."]
         if let prompt = final.output.imagePrompt { l += ["", "Image prompt:", "> \(prompt)"] }
         if let text = final.output.text { l += ["", "## Result", "", text] }
-        if let asset = final.output.assetPath { l += ["", "Image file: \((asset as NSString).lastPathComponent)"] }
+        if let asset = final.output.assetPath { l += ["", "\(final.output.kind == .video ? "Video" : "Image") file: \((asset as NSString).lastPathComponent)"] }
         return l.joined(separator: "\n") + "\n"
     }
 
     /// Suggested file name and contents for the selected result.
     public static func resultFile(_ snapshot: Snapshot, store: Store) -> (ext: String, data: Data)? {
         switch snapshot.output.kind {
-        case .image:
+        case .image, .video:
             guard let url = store.assetURL(snapshot.output.assetPath), let data = try? Data(contentsOf: url) else { return nil }
             return (url.pathExtension, data)
         case .code:

@@ -21,6 +21,7 @@ let package = Package(
         .executableTarget(
             name: "EthersPrism",
             dependencies: ["EthersPrismCore"],
+            resources: [.copy("Resources/AppIcon.png")],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT",
                                            "-Xlinker", "__info_plist", "-Xlinker", infoPlist])]),
         .testTarget(name: "EthersPrismCoreTests", dependencies: ["EthersPrismCore"])

@@ -134,9 +134,12 @@ public enum Checker {
     /// Nil when there is nothing to check against.
     public static func request(for output: Output, constraints: [Constraint]) -> TextRequest? {
         let fixed = Compiler.describe(constraints)
-        let content = output.text ?? output.imagePrompt
+        let isVideo = output.kind == .video
+        let content = isVideo ? output.imagePrompt : (output.text ?? output.imagePrompt)
         guard !fixed.isEmpty, let content, !content.trimmed.isEmpty else { return nil }
-        let what = output.text == nil ? "image prompt (the picture itself is not available to you)" : "result"
+        let promptOnly = isVideo || output.text == nil
+        let what = isVideo ? "video prompt (the clip itself is not available to you)"
+            : promptOnly ? "image prompt (the picture itself is not available to you)" : "result"
         let system = """
         \(marker) You are a careful reviewer. Check the \(what) against the fixed requirements only. \
         A requirement names a quality, not a word to search for: "Must avoid: jargon" means no technical or insider \
@@ -145,7 +148,7 @@ public enum Checker {
         rewrite anything. Respond with only JSON: \
         {"passes": true or false, "issues": ["requirement — \\"exact quoted words\\""]}
         """
-        let label = output.text == nil ? "Image prompt" : "Result"
+        let label = isVideo ? "Video prompt" : promptOnly ? "Image prompt" : "Result"
         let user = "Fixed requirements:\n\(fixed)\n\n\(label):\n\"\"\"\n\(content.prefix(12000))\n\"\"\""
         return TextRequest(system: system, user: user, maxTokens: 600, schema: Schemas.review)
     }

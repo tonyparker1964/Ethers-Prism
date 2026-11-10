@@ -37,6 +37,17 @@ Each agent can use Claude (Anthropic), LM Studio, Ollama or Mock. **Teach by exa
 
 Mixar is an AI 3D editor built on Blender. Ethers Prism connects through Mixar's **Connect MCP** (profile menu → Connect MCP → Turn on) and lists Mixar's tools. Inspecting and rendering in Mixar are free; Mixar's AI generation costs Mixar credits. The **3D Stage (Blender)** field is the free, local alternative: type the path to a GLB, GLTF, OBJ or FBX file as the goal (or anything else for a sample model). Its dials set camera orbit, height, lens, lighting contrast and mood. Previews render with Eevee, full renders with Cycles on the GPU; the first Cycles render compiles GPU code and is slow, later ones are fast.
 
+## Video (Settings → Video)
+
+Two separate fields make real clips on this Mac with **LTX Video** through ComfyUI (the same ComfyUI address as images):
+
+- **Text to Video**: describe the shot. Dials: Motion, Camera move, Realism, Mood, Length.
+- **Image to Video**: press **Choose Image…** and add a few words about how it should move. Dials: Motion, Camera move, Faithfulness (how closely the clip keeps your image), Atmosphere, Length.
+
+The Art Director agent turns the goal and dials into the long, descriptive prompt LTX Video needs; Length and Faithfulness also set numbers directly. Previews are 1 second at 512 px; full renders run 1–8 seconds at 768 px and can take a long time on a Mac, so video previews start only when you press Preview. Starting another job stops the one in progress, and LM Studio's models are unloaded while a clip renders.
+
+ComfyUI needs two files: `ltx-video-2b-v0.9.5.safetensors` in `models/checkpoints` and `t5xxl_fp16.safetensors` in `models/text_encoders` (the fp8 encoder doesn't run on Apple Silicon). Settings → Video → Check ComfyUI confirms both. Clips are saved as MP4 (animated WebP on older ComfyUI).
+
 ## Providers (Settings, ⌘,)
 
 - **Claude:** paste an API key from console.anthropic.com in Settings → Agents. It is stored in your Keychain and never written to sessions or exports.

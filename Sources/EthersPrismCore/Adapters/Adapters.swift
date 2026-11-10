@@ -14,12 +14,15 @@ public struct OutputCapabilities: Hashable, Sendable {
     public var editable: Bool
     public var exportFormats: [String]
     public var needsImageProvider: Bool
+    public var needsVideoProvider: Bool
 
-    public init(kind: OutputKind, editable: Bool, exportFormats: [String], needsImageProvider: Bool = false) {
+    public init(kind: OutputKind, editable: Bool, exportFormats: [String], needsImageProvider: Bool = false,
+                needsVideoProvider: Bool = false) {
         self.kind = kind
         self.editable = editable
         self.exportFormats = exportFormats
         self.needsImageProvider = needsImageProvider
+        self.needsVideoProvider = needsVideoProvider
     }
 }
 
@@ -192,7 +195,7 @@ public struct ImageAdapter: DomainAdapter {
 // MARK: - Registry
 
 public enum Domains {
-    public static let all: [any DomainAdapter] = [text, ImageAdapter(), BlenderStageAdapter(), video, music, code, research]
+    public static let all: [any DomainAdapter] = [text, ImageAdapter(), BlenderStageAdapter(), TextToVideoAdapter(), ImageToVideoAdapter(), video, music, code, research]
 
     public static func adapter(for id: String) -> any DomainAdapter {
         all.first { $0.id == id } ?? text
@@ -207,8 +210,8 @@ public enum Domains {
         previewTokens: 600, renderTokens: 4000)
 
     public static let video = TextAdapter(
-        id: "video", name: "Video", symbol: "film",
-        status: .unfinished("Storyboard preview only. No video is generated."),
+        id: "video", name: "Video Storyboard", symbol: "rectangle.split.3x1",
+        status: .unfinished("Storyboard only. For real clips use Text to Video or Image to Video."),
         capabilities: OutputCapabilities(kind: .storyboard, editable: true, exportFormats: ["md"]),
         dialHint: "pacing, visual detail, historical reference, technical accuracy, humor, narration style",
         role: "You are a director and educational video producer.",

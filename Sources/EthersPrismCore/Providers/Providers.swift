@@ -45,11 +45,14 @@ public protocol ImageProvider: Sendable {
 public struct ProviderSet: Sendable {
     public var text: any TextProvider
     public var image: (any ImageProvider)?
+    public var video: (any VideoProvider)?
     public var agents: [AgentRole: any TextProvider]
 
-    public init(text: any TextProvider, image: (any ImageProvider)?, agents: [AgentRole: any TextProvider] = [:]) {
+    public init(text: any TextProvider, image: (any ImageProvider)?, agents: [AgentRole: any TextProvider] = [:],
+                video: (any VideoProvider)? = nil) {
         self.text = text
         self.image = image
+        self.video = video
         self.agents = agents
     }
 
@@ -302,7 +305,7 @@ public struct MockTextProvider: TextProvider {
         let lines = request.user.components(separatedBy: "\n")
         let goal = lines.first ?? ""
         let dials = lines.filter { $0.hasPrefix("- ") }.joined(separator: "\n")
-        if request.system.contains(ImageAdapter.promptMarker) {
+        if request.system.contains(ImageAdapter.promptMarker) || request.system.contains(VideoDirection.marker) {
             return #"{"prompt": "MOCK image prompt for \#(goal.replacingOccurrences(of: "\"", with: "'")) (variation \#(seed % 997))", "negative": "blurry"}"#
         }
         if request.system.lowercased().contains("storyboard") {

@@ -10,6 +10,7 @@ struct SettingsView: View {
         TabView {
             agentsTab.tabItem { Label("Agents", systemImage: "person.3") }
             imageTab.tabItem { Label("Images", systemImage: "photo") }
+            videoTab.tabItem { Label("Video", systemImage: "film") }
             mixarTab.tabItem { Label("Mixar", systemImage: "cube") }
             storageTab.tabItem { Label("Storage", systemImage: "folder") }
         }
@@ -141,6 +142,45 @@ struct SettingsView: View {
                     Text("ComfyUI usually listens on port 8188 (some Comfy Desktop setups use 8000). Your ComfyUI instance must be running. Flux models usually work best with CFG 1.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var videoTab: some View {
+        Form {
+            Section("LTX Video through ComfyUI") {
+                Text("Text to Video and Image to Video run on this Mac through ComfyUI at \(model.comfy.baseURL) (the address on the Images tab). They need two files in ComfyUI: the LTX Video model in models/checkpoints and the T5 text encoder in models/text_encoders.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button("Check ComfyUI") { Task { await model.checkVideo() } }
+                    if let status = model.videoStatus {
+                        Text(status).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if model.videoModelChoices.isEmpty {
+                    TextField("Video model (checkpoint)", text: $model.comfyVideo.checkpoint)
+                } else {
+                    Picker("Video model", selection: $model.comfyVideo.checkpoint) {
+                        ForEach(model.videoModelChoices, id: \.self) { Text($0).tag($0) }
+                    }
+                }
+                if model.videoEncoderChoices.isEmpty {
+                    TextField("Text encoder", text: $model.comfyVideo.textEncoder)
+                } else {
+                    Picker("Text encoder", selection: $model.comfyVideo.textEncoder) {
+                        ForEach(model.videoEncoderChoices, id: \.self) { Text($0).tag($0) }
+                    }
+                }
+                Stepper("Preview steps: \(model.comfyVideo.previewSteps)", value: $model.comfyVideo.previewSteps, in: 4...40)
+                Stepper("Render steps: \(model.comfyVideo.renderSteps)", value: $model.comfyVideo.renderSteps, in: 8...80)
+                HStack {
+                    Text("CFG")
+                    Slider(value: $model.comfyVideo.cfg, in: 1...8, step: 0.5)
+                    Text(String(format: "%.1f", model.comfyVideo.cfg)).monospacedDigit()
+                }
+                Text("Previews are 1 second at 512 px; full renders use the Length dial (1–8 seconds) at 768 px. On a Mac, a full render can take a long time, so try ideas with previews first. While a clip renders, LM Studio's models are unloaded to make room.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
