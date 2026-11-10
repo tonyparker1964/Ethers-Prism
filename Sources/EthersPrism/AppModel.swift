@@ -382,7 +382,7 @@ final class AppModel: ObservableObject {
     /// Waits until the dials stop moving, then previews once.
     func dialsChanged() {
         // Video previews take minutes, so they start only when the person presses Preview.
-        guard autoPreview, !adapter.capabilities.needsVideoProvider else { return }
+        guard autoPreview, adapter.capabilities.kind != .video else { return }
         debounceTask?.cancel()
         debounceTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 750_000_000)

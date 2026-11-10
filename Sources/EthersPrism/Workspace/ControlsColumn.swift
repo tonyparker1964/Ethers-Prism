@@ -50,6 +50,13 @@ struct GoalSection: View {
                         Button { chooseFile(types: ["glb", "gltf", "obj", "fbx"], keepDescription: false) } label: {
                             Label("Choose Model…", systemImage: "cube")
                         }
+                    } else if model.adapter.id == "animate" {
+                        Button { chooseAnimationFile(song: true) } label: {
+                            Label("Choose Song…", systemImage: "music.note")
+                        }
+                        Button { chooseAnimationFile(song: false) } label: {
+                            Label("Choose Planet Image…", systemImage: "globe")
+                        }
                     }
                     Button {
                         Task { await model.suggestDials() }
@@ -70,8 +77,22 @@ struct GoalSection: View {
         case "i2v": return "Choose a starting image, then say how it should move"
         case "t2v": return "Describe the shot: who or what, doing what, where"
         case "stage": return "Path to a model file (or leave empty for the sample)"
+        case "animate": return "Optional: choose a song to pulse to and an image to wrap around the planet"
         default: return "What do you want to make?"
         }
+    }
+
+    /// Animation: puts the chosen song or planet image in the goal, replacing the previous one of that kind.
+    private func chooseAnimationFile(song: Bool) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        let types = song ? BlenderAnimationAdapter.audioExtensions : BlenderAnimationAdapter.imageExtensions
+        panel.allowedContentTypes = types.compactMap { UTType(filenameExtension: $0) }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let parts = BlenderAnimationAdapter.files(in: model.current?.goal ?? "")
+        let keep: [String?] = [parts.words, song ? parts.texture : parts.audio, url.path]
+        model.goalBinding.wrappedValue = keep.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
     }
 
     /// Puts the chosen file's path in the goal. For Image to Video the words about motion are kept.
@@ -272,7 +293,10 @@ struct PlaySection: View {
     var body: some View {
         GroupBox("Play") {
             VStack(alignment: .leading, spacing: 10) {
-                if model.adapter.capabilities.needsVideoProvider {
+                if model.adapter.id == "animate" {
+                    Text("Previews are 2-second, low-resolution clips; Render Full Quality makes the full-length 720p clip with your song. Set the dials first, then press Preview. Starting another preview stops the one in progress.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if model.adapter.capabilities.needsVideoProvider {
                     Text("Video previews take a few minutes on a Mac, so set the dials first, then press Preview. Starting another preview stops the one in progress.")
                         .font(.caption).foregroundStyle(.secondary)
                 } else {

@@ -155,6 +155,34 @@ final class AgentTests: XCTestCase {
         XCTAssertNil(BlenderStageAdapter.modelPath(from: "a robot"), "no file means the sample model")
     }
 
+    func testBlenderAnimationReadsSongImageAndDials() async throws {
+        let anim = BlenderAnimationAdapter()
+        XCTAssertEqual(Domains.adapter(for: "animate").capabilities.kind, .video)
+        XCTAssertFalse(Domains.adapter(for: "animate").capabilities.needsVideoProvider, "Blender, not ComfyUI")
+        let dials = try await anim.suggestDials(for: "", using: ProviderSet(text: MockTextProvider(), image: nil))
+        XCTAssertEqual(dials.count, 6)
+
+        let f = BlenderAnimationAdapter.files(in: "fiery planet\n~/Music/My Beat.wav\n/Volumes/Art/sun map.png")
+        XCTAssertTrue(f.audio?.hasSuffix("/Music/My Beat.wav") ?? false, "paths with spaces work")
+        XCTAssertFalse(f.audio?.hasPrefix("~") ?? true, "the home folder is expanded")
+        XCTAssertEqual(f.texture, "/Volumes/Art/sun map.png")
+        XCTAssertEqual(f.words, "fiery planet")
+        let none = BlenderAnimationAdapter.files(in: "earth/fire planet")
+        XCTAssertNil(none.audio)
+        XCTAssertNil(none.texture)
+
+        var state = WorkingState(goal: "~/Music/beat.mp3", domainID: "animate", dials: dials, constraints: [])
+        state.dials[0].value = 100
+        let a = anim.compile(CompileInput(state: state, quality: .preview))
+        XCTAssertEqual(a, anim.compile(CompileInput(state: state, quality: .preview)))
+        XCTAssertNotEqual(a.seed, anim.compile(CompileInput(state: state, quality: .render)).seed)
+        let p = BlenderAnimationAdapter.parameters(CompileInput(state: state, quality: .render))
+        XCTAssertEqual(p["spin"] as? Double, 1.0)
+        XCTAssertEqual(p["beat"] as? Double, 0.6)
+        XCTAssertEqual(p["texture"] as? String, "")
+        XCTAssertTrue((p["audio"] as? String)?.hasSuffix("/Music/beat.mp3") ?? false)
+    }
+
     func testTeachByExampleUsesOnlyStarsAndHandEdits() async throws {
         var s = Session(goal: "Announce the meetup")
         s.dials = [Dial(name: "Warmth", lowPole: "cool", highPole: "warm")]

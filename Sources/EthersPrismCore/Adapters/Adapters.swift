@@ -199,7 +199,7 @@ public struct ImageAdapter: DomainAdapter {
 // MARK: - Registry
 
 public enum Domains {
-    public static let all: [any DomainAdapter] = [text, ImageAdapter(), BlenderStageAdapter(), TextToVideoAdapter(), ImageToVideoAdapter(), BeatsAdapter(), video, music, code, research]
+    public static let all: [any DomainAdapter] = [text, ImageAdapter(), BlenderStageAdapter(), BlenderAnimationAdapter(), TextToVideoAdapter(), ImageToVideoAdapter(), BeatsAdapter(), video, music, code, research]
 
     public static func adapter(for id: String) -> any DomainAdapter {
         all.first { $0.id == id } ?? text
