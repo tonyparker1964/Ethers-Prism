@@ -9,6 +9,13 @@ struct NamedProvider: TextProvider {
     func complete(_ request: TextRequest) async throws -> String { reply }
 }
 
+/// Returns the system prompt it was sent.
+struct EchoSystemProvider: TextProvider {
+    let name = "echo"
+    let model = "echo"
+    func complete(_ request: TextRequest) async throws -> String { request.system }
+}
+
 final class AgentTests: XCTestCase {
     func testEachJobGoesToItsOwnAgent() async throws {
         let providers = ProviderSet(
@@ -146,6 +153,34 @@ final class AgentTests: XCTestCase {
         XCTAssertEqual(p["orbit"] as? Double, 0.5)
         XCTAssertTrue((p["model"] as? String)?.hasSuffix("/Models/tiger.glb") ?? false)
         XCTAssertNil(BlenderStageAdapter.modelPath(from: "a robot"), "no file means the sample model")
+    }
+
+    func testTeachByExampleUsesOnlyStarsAndHandEdits() async throws {
+        var s = Session(goal: "Announce the meetup")
+        s.dials = [Dial(name: "Warmth", lowPole: "cool", highPole: "warm")]
+        s.record(Output(kind: .text, text: "ignored draft", provider: "p", model: "m"), origin: .preview)
+        let starred = s.record(Output(kind: .text, text: "starred draft", provider: "p", model: "m"), origin: .preview)
+        s.toggleChosen(starred.id)
+        s.recordManualEdit(text: "my own words")
+        var img = Session(goal: "tiger", domainID: "image")
+        let pic = img.record(Output(kind: .image, imagePrompt: "a tiger of stars", provider: "p", model: "m"), origin: .preview)
+        img.toggleChosen(pic.id)
+
+        let writer = try XCTUnwrap(TeachByExample.examples(for: .writer, in: [s, img]))
+        XCTAssertTrue(writer.contains("my own words"))
+        XCTAssertTrue(writer.contains("starred draft"))
+        XCTAssertFalse(writer.contains("ignored draft"), "unstarred results are not examples")
+        XCTAssertTrue(TeachByExample.examples(for: .artDirector, in: [s, img])?.contains("a tiger of stars") ?? false)
+        XCTAssertTrue(TeachByExample.examples(for: .dialDesigner, in: [s, img])?.contains("Warmth: cool ↔ warm") ?? false)
+        XCTAssertNil(TeachByExample.examples(for: .checker, in: [s, img]))
+        XCTAssertNil(TeachByExample.examples(for: .coder, in: [s, img]))
+        XCTAssertNil(TeachByExample.examples(for: .writer, in: []), "no history, no examples")
+
+        let echo = EchoSystemProvider()
+        let taught = ExampleTaughtTextProvider(inner: echo, examples: writer)
+        let sent = try await taught.complete(TextRequest(system: "base", user: "u", maxTokens: 5))
+        XCTAssertTrue(sent.hasPrefix("base"))
+        XCTAssertTrue(sent.contains(TeachByExample.marker))
     }
 
     func testMCPTransportRoundTrip() async throws {

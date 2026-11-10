@@ -27,7 +27,7 @@ Each job has its own agent and model. You still choose the dials and the results
 | Coder | The Code field | LM Studio · Qwen3 Coder 30B |
 | Checker | Reviews each result against the fixed requirements; flags with quoted evidence, never rewrites | LM Studio · Qwen3 8B |
 
-Each agent can use Claude (Anthropic), LM Studio, Ollama or Mock. Agents that must return data (dials, image prompts, reviews) ask local servers for JSON-schema output, and small slips are repaired.
+Each agent can use Claude (Anthropic), LM Studio, Ollama or Mock. **Teach by example** (on by default): before each job, the Writer, Coder, Art Director and Dial Designer see up to 3 of your recent starred results or hand edits, so they learn your taste. Nothing is trained and nothing leaves your Mac. Agents that must return data (dials, image prompts, reviews) ask local servers for JSON-schema output, and small slips are repaired.
 
 **Memory hand-off:** large local models (20B+) and ComfyUI can't share 24 GB. With hand-off on, ComfyUI releases its model before a large agent runs, and LM Studio unloads large models before ComfyUI renders. Small models stay loaded.
 

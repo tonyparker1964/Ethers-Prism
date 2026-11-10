@@ -26,6 +26,9 @@ struct SettingsView: View {
                 }
                 Toggle("Checker reviews every result against the fixed requirements", isOn: $model.team.checkerEnabled)
                 Toggle("Large local models (20B+) and ComfyUI take turns with memory", isOn: $model.team.memoryHandoff)
+                Toggle("Teach agents with my starred results and hand edits", isOn: $model.team.teachByExample)
+                Text("Before each job, the Writer, Coder, Art Director and Dial Designer see up to 3 of your recent starred results or hand edits, so they learn your taste. Nothing is trained and nothing leaves this Mac.")
+                    .font(.caption).foregroundStyle(.secondary)
             } header: {
                 HStack {
                     Text("Agents")

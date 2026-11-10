@@ -61,6 +61,8 @@ public struct AgentTeam: Codable, Hashable, Sendable {
     public var checkerEnabled: Bool
     /// Large local models (20B+) and ComfyUI take turns with memory.
     public var memoryHandoff: Bool
+    /// Agents see a few of the person's starred results and hand edits before they work.
+    public var teachByExample: Bool = true
 
     public static let smallLocalModel = "qwen/qwen3-8b"
     public static let coderModel = "qwen3-coder-30b-a3b-instruct"
@@ -96,7 +98,7 @@ public struct AgentTeam: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case assignments, lmStudioURL, ollamaURL, checkerEnabled, memoryHandoff
+        case assignments, lmStudioURL, ollamaURL, checkerEnabled, memoryHandoff, teachByExample
     }
 
     public init(from decoder: Decoder) throws {
@@ -106,6 +108,7 @@ public struct AgentTeam: Codable, Hashable, Sendable {
         ollamaURL = try c.decodeIfPresent(String.self, forKey: .ollamaURL) ?? "http://127.0.0.1:11434"
         checkerEnabled = try c.decodeIfPresent(Bool.self, forKey: .checkerEnabled) ?? true
         memoryHandoff = try c.decodeIfPresent(Bool.self, forKey: .memoryHandoff) ?? true
+        teachByExample = try c.decodeIfPresent(Bool.self, forKey: .teachByExample) ?? true
         for role in AgentRole.allCases where !assignments.contains(where: { $0.role == role }) {
             assignments.append(AgentTeam.local.assignment(role))
         }
@@ -168,5 +171,77 @@ public enum Checker {
 extension Session {
     public mutating func setReview(_ review: Review, for snapshotID: UUID) {
         if let i = snapshots.firstIndex(where: { $0.id == snapshotID }) { snapshots[i].output.review = review }
+    }
+}
+
+// MARK: - Teach by example
+
+/// Shows each agent a few of the person's own past choices (starred results and hand edits) before it works.
+/// Nothing is trained and nothing leaves the Mac: the examples are read from local session history.
+public enum TeachByExample {
+    public static let marker = "Examples of what this person chose before"
+
+    public static func examples(for role: AgentRole, in sessions: [Session], limit: Int = 3, maxChars: Int = 4000) -> String? {
+        var items: [(date: Date, text: String)] = []
+        var seen = Set<String>()
+        for s in sessions {
+            for snap in s.snapshots where snap.chosen || snap.origin == .manualEdit {
+                let goal = snap.state.goal.trimmed
+                let entry: String?
+                switch role {
+                case .writer:
+                    guard [.text, .storyboard].contains(snap.output.kind), let t = snap.output.text, !t.trimmed.isEmpty else { continue }
+                    let how = snap.origin == .manualEdit ? "their own hand-edited version" : "the version they starred"
+                    entry = "Goal: \(goal)\nWhat they kept (\(how)):\n\(t.trimmed.prefix(1200))"
+                case .coder:
+                    guard snap.output.kind == .code, let t = snap.output.text, !t.trimmed.isEmpty else { continue }
+                    entry = "Goal: \(goal)\nCode they kept:\n\(t.trimmed.prefix(1500))"
+                case .artDirector:
+                    guard snap.chosen, let p = snap.output.imagePrompt, !p.trimmed.isEmpty else { continue }
+                    entry = "Goal: \(goal)\nImage prompt behind a picture they starred:\n\(p.trimmed)"
+                case .dialDesigner:
+                    guard snap.chosen, !snap.state.dials.isEmpty else { continue }
+                    let dials = snap.state.dials.map { "- \($0.name): \($0.lowPole) ↔ \($0.highPole)" }.joined(separator: "\n")
+                    entry = "Goal: \(goal)\nDials in an editor they used and starred a result from:\n\(dials)"
+                case .checker:
+                    entry = nil
+                }
+                guard let e = entry, seen.insert(e).inserted else { continue }
+                items.append((snap.createdAt, e))
+            }
+        }
+        guard !items.isEmpty else { return nil }
+        var out: [String] = []
+        var used = 0
+        for (i, item) in items.sorted(by: { $0.date > $1.date }).prefix(limit).enumerated() {
+            let block = "### Example \(i + 1)\n\(item.text)"
+            if used + block.count > maxChars && !out.isEmpty { break }
+            out.append(block)
+            used += block.count
+        }
+        return out.joined(separator: "\n\n")
+    }
+
+    public static func addition(_ examples: String) -> String {
+        "\n\n\(marker) (learn their taste, voice and level of detail from these; never copy them, and the current goal and dials always come first):\n\n\(examples)"
+    }
+}
+
+/// Adds the person's own examples to an agent's instructions.
+public struct ExampleTaughtTextProvider: TextProvider {
+    public var inner: any TextProvider
+    public var examples: String
+    public var name: String { inner.name }
+    public var model: String { inner.model }
+
+    public init(inner: any TextProvider, examples: String) {
+        self.inner = inner
+        self.examples = examples
+    }
+
+    public func complete(_ request: TextRequest) async throws -> String {
+        var r = request
+        r.system += TeachByExample.addition(examples)
+        return try await inner.complete(r)
     }
 }

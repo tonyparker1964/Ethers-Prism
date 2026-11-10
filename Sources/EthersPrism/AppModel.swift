@@ -97,10 +97,14 @@ final class AppModel: ObservableObject {
         case .ollama: base = OpenAICompatibleTextProvider(name: "Ollama", baseURL: team.ollamaURL, model: a.model)
         case .mock: base = MockTextProvider()
         }
-        if team.memoryHandoff && a.backend.isLocal && imageProviderKind == "comfyui" {
-            return MemoryAwareTextProvider(inner: base, comfyURL: comfy.baseURL)
+        var worker = base
+        if team.teachByExample, let examples = TeachByExample.examples(for: role, in: sessions) {
+            worker = ExampleTaughtTextProvider(inner: base, examples: examples)
         }
-        return base
+        if team.memoryHandoff && a.backend.isLocal && imageProviderKind == "comfyui" {
+            return MemoryAwareTextProvider(inner: worker, comfyURL: comfy.baseURL)
+        }
+        return worker
     }
 
     var imageProvider: (any ImageProvider)? {
