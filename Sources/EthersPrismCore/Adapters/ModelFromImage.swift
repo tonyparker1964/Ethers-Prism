@@ -22,7 +22,7 @@ public struct ModelFromImageAdapter: DomainAdapter {
         [Dial(name: "Mode", detail: "Relief carves the whole picture by brightness; Extrude pulls its outline or a logo's lines out into a solid.", lowPole: "relief", highPole: "extrude", value: 25),
          Dial(name: "Depth", detail: "How far the shapes rise.", lowPole: "shallow", highPole: "deep", value: 50),
          Dial(name: "Bevel", detail: "Rounded edges on extruded shapes.", lowPole: "sharp", highPole: "soft rounded", value: 40),
-         Dial(name: "Material", detail: "What it's made of.", lowPole: "metal", highPole: "neon", value: 50),
+         Dial(name: "Material", detail: "What it's made of: metal, glass (the middle) or neon light.", lowPole: "metal", highPole: "neon", value: 85),
          Dial(name: "Detail", detail: "How much of the picture becomes shape.", lowPole: "bold and simple", highPole: "every detail", value: 60),
          Dial(name: "Color", detail: "One material color, or the picture's own colors.", lowPole: "one tint", highPole: "picture's colors", value: 100),
          Dial(name: "Light angle", detail: "Low light skims across and makes the carving pop.", lowPole: "low, raking", highPole: "overhead", value: 30),
@@ -44,7 +44,7 @@ public struct ModelFromImageAdapter: DomainAdapter {
         func v(_ key: String, _ fallback: Double) -> Double {
             (input.state.dials.first { $0.name.lowercased().contains(key) }?.value ?? fallback) / 100
         }
-        return ["mode": v("mode", 25), "depth": v("depth", 50), "bevel": v("bevel", 40), "material": v("material", 50),
+        return ["mode": v("mode", 25), "depth": v("depth", 50), "bevel": v("bevel", 40), "material": v("material", 85),
                 "detail": v("detail", 60), "color": v("color", 100), "light": v("light", 30), "tilt": v("camera", 35),
                 "quality": input.quality.rawValue, "image": imagePath(from: input.state.goal) ?? ""]
     }
@@ -383,7 +383,7 @@ world = bpy.data.worlds.new('Studio'); scene.world = world
 world.use_nodes = True
 bg = world.node_tree.nodes['Background']
 bg.inputs['Color'].default_value = (0.02, 0.018, 0.03, 1)
-bg.inputs['Strength'].default_value = 1.0 + 5.0 * w_glass      # glass needs something to refract
+bg.inputs['Strength'].default_value = 1.0 + 2.5 * w_glass      # glass needs something to refract
 if w_glass > 0.05:
     bg.inputs['Color'].default_value = (0.05, 0.045, 0.07, 1)
 key_d = bpy.data.lights.new('Key', 'SUN'); key_d.energy = 4.5 * (1 - 0.6 * w_neon); key_d.angle = math.radians(3)
@@ -465,6 +465,12 @@ if a.get('model_out'):
         bpy.ops.object.select_all(action='DESELECT')
         obj.select_set(True)
         bpy.context.view_layer.objects.active = obj
+        # stand it up: the carved face looks forward, the bottom edge sits at the floor
+        obj.rotation_euler = (math.radians(90), 0, 0)
+        bpy.ops.object.transform_apply(rotation=True)
+        zmin = min((obj.matrix_world @ vv.co).z for vv in obj.data.vertices)
+        obj.location.z -= zmin
+        bpy.ops.object.transform_apply(location=True)
         bpy.ops.export_scene.gltf(filepath=a['model_out'], use_selection=True, export_apply=True)
         print('Model saved:', a['model_out'], file=sys.stderr)
     except Exception as e:

@@ -328,6 +328,19 @@ struct PlaySection: View {
                 } else {
                     Toggle("Preview automatically when a dial stops moving", isOn: $model.autoPreview)
                 }
+                if model.adapter.id == "model3d",
+                   let text = model.current?.currentSnapshot?.output.text,
+                   let glb = ModelFromImageAdapter.modelPath(in: text),
+                   FileManager.default.fileExists(atPath: glb) {
+                    Button { model.openInStage(glb) } label: {
+                        Label("Open in 3D Stage", systemImage: "cube")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: glb)]) } label: {
+                        Label("Show Model in Finder", systemImage: "folder")
+                    }
+                    .buttonStyle(.borderless)
+                }
                 HStack {
                     Button { model.generate(.preview, force: true) } label: { Label("Preview", systemImage: "eye") }
                     Button { model.exploreNearby() } label: { Label("Explore Nearby", systemImage: "dice") }
@@ -337,18 +350,6 @@ struct PlaySection: View {
                     Label("Render Full Quality", systemImage: "wand.and.stars")
                 }
                 .buttonStyle(.borderedProminent)
-                if model.adapter.id == "model3d",
-                   let text = model.current?.currentSnapshot?.output.text,
-                   let glb = ModelFromImageAdapter.modelPath(in: text),
-                   FileManager.default.fileExists(atPath: glb) {
-                    Button { model.openInStage(glb) } label: {
-                        Label("Open in 3D Stage", systemImage: "cube")
-                    }
-                    Button { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: glb)]) } label: {
-                        Label("Show Model in Finder", systemImage: "folder")
-                    }
-                    .buttonStyle(.borderless)
-                }
                 Divider()
                 Button { model.showSaveTemplate = true } label: {
                     Label("Save Editor as Template…", systemImage: "square.and.arrow.down.on.square")

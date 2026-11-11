@@ -257,8 +257,16 @@ final class AppModel: ObservableObject {
 
     /// Opens a 3D model file in a new 3D Stage session, ready for camera and lighting dials.
     func openInStage(_ modelPath: String) {
-        let name = ((modelPath as NSString).lastPathComponent as NSString).deletingPathExtension
-        let s = Session(title: name, goal: modelPath, domainID: "stage")
+        // Previews keep their model in a temporary folder macOS clears; keep a copy with the exports.
+        var path = modelPath
+        if !path.hasPrefix(ModelFromImageAdapter.modelsFolder) {
+            let dest = (ModelFromImageAdapter.modelsFolder as NSString).appendingPathComponent((path as NSString).lastPathComponent)
+            try? FileManager.default.createDirectory(atPath: ModelFromImageAdapter.modelsFolder, withIntermediateDirectories: true)
+            if !FileManager.default.fileExists(atPath: dest) { try? FileManager.default.copyItem(atPath: path, toPath: dest) }
+            if FileManager.default.fileExists(atPath: dest) { path = dest }
+        }
+        let name = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+        let s = Session(title: name, goal: path, domainID: "stage")
         sessions.insert(s, at: 0)
         selectedID = s.id
         try? store.save(s)
