@@ -10,7 +10,6 @@ struct SettingsView: View {
         TabView {
             agentsTab.tabItem { Label("Agents", systemImage: "person.3") }
             imageTab.tabItem { Label("Images", systemImage: "photo") }
-            videoTab.tabItem { Label("Video", systemImage: "film") }
             mixarTab.tabItem { Label("Mixar", systemImage: "cube") }
             soundsTab.tabItem { Label("Sounds", systemImage: "waveform") }
             storageTab.tabItem { Label("Storage", systemImage: "folder") }
@@ -23,7 +22,8 @@ struct SettingsView: View {
             Section {
                 Text("One agent per job. You still choose the dials and the results; agents only do the job they're given.")
                     .font(.caption).foregroundStyle(.secondary)
-                ForEach(AgentRole.allCases, id: \.self) { role in
+                // The Coder only served the retired Code field.
+                ForEach(AgentRole.allCases.filter { $0 != .coder }, id: \.self) { role in
                     AgentRow(role: role, assignment: model.assignmentBinding(role))
                 }
                 Toggle("Checker reviews every result against the fixed requirements", isOn: $model.team.checkerEnabled)

@@ -4,7 +4,9 @@
 
 Describe a goal and Ethers Prism builds you an editor: dials with named ends, plus fixed requirements. Move the dials, watch previews change, sweep one dial across its range, branch through history, compare states, render the version you choose, and export it with an authorship log. Choosing and editing the dials is part of the authorship.
 
-Text, Image, 3D Stage and Beats are fully working. Video (storyboards), Music Sketch (written sketches), Code (previews) and Research (plans) are labeled unfinished.
+Five fields, all working and all local: **Text**, **Image**, **3D Stage (Blender)**, **Animation (Blender)** and **Beats (your samples)**.
+
+Retired fields (Video Storyboard, Music Sketch, Code, Research, Text to Video, Image to Video) are no longer offered for new work, but sessions made with them still open with their results. Text to Video and Image to Video are parked on the `ltx-mlx` branch until LTX runs on this Mac.
 
 ## Setup
 
@@ -24,13 +26,12 @@ Each job has its own agent and model. You still choose the dials and the results
 | Agent | Job | Default |
 |---|---|---|
 | Dial Designer | Proposes dials for a goal | LM Studio · Qwen3 8B |
-| Writer | Text, music sketches, storyboards, research plans | LM Studio · Qwen3 8B |
+| Writer | The Text field | LM Studio · Qwen3 8B |
 | Art Director | Turns dials and requirements into image prompts | LM Studio · Qwen3 8B |
-| Coder | The Code field | LM Studio · Qwen3 Coder 30B |
 | Checker | Reviews each result against the fixed requirements; flags with quoted evidence, never rewrites | LM Studio · Qwen3 8B |
 | Music Producer | For Beats: reads the goal and your sample library, picks the style, up to three kits and the starting dial positions | LM Studio · Qwen3 8B |
 
-Each agent can use Claude (Anthropic), LM Studio, Ollama or Mock. **Teach by example** (on by default): before each job, the Writer, Coder, Art Director and Dial Designer see up to 3 of your recent starred results or hand edits, so they learn your taste. Nothing is trained and nothing leaves your Mac. Agents that must return data (dials, image prompts, reviews) ask local servers for JSON-schema output, and small slips are repaired.
+Each agent can use Claude (Anthropic), LM Studio, Ollama or Mock. **Teach by example** (on by default): before each job, the Writer, Art Director and Dial Designer see up to 3 of your recent starred results or hand edits, so they learn your taste. Nothing is trained and nothing leaves your Mac. Agents that must return data (dials, image prompts, reviews) ask local servers for JSON-schema output, and small slips are repaired.
 
 **Memory hand-off:** large local models (20B+) and ComfyUI can't share 24 GB. With hand-off on, ComfyUI releases its model before a large agent runs, and LM Studio unloads large models before ComfyUI renders. Small models stay loaded.
 
@@ -42,16 +43,9 @@ Mixar is an AI 3D editor built on Blender. Ethers Prism connects through Mixar's
 
 **Animation (Blender)** renders a spinning planet as an MP4, free and local. Press **Choose Song…** and the planet and its atmosphere pulse to the music, and the song is in the clip (with no song it pulses at 90 BPM). **Choose Planet Image…** wraps your own image around it; otherwise the surface is generated. Dials: Spin speed, Beat strength, Glow, Mood (warm fire to cool ice), Camera drift, Length (2–10 seconds, never longer than the song). Previews are 2 seconds at 640×360 and start only when you press Preview; full renders are 720p at 24 fps with Eevee.
 
-## Video (Settings → Video)
+## Video (retired for now)
 
-Two separate fields make real clips on this Mac with **LTX Video** through ComfyUI (the same ComfyUI address as images):
-
-- **Text to Video**: describe the shot. Dials: Motion, Camera move, Realism, Mood, Length.
-- **Image to Video**: press **Choose Image…** and add a few words about how it should move. Dials: Motion, Camera move, Faithfulness (how closely the clip keeps your image), Atmosphere, Length.
-
-The Art Director agent turns the goal and dials into the long, descriptive prompt LTX Video needs; Length and Faithfulness also set numbers directly. Previews are 1 second at 512 px; full renders run 1–8 seconds at 768 px and can take a long time on a Mac, so video previews start only when you press Preview. Starting another job stops the one in progress, and LM Studio's models are unloaded while a clip renders.
-
-ComfyUI needs two files: `ltx-video-2b-v0.9.5.safetensors` in `models/checkpoints` and `t5xxl_fp16.safetensors` in `models/text_encoders` (the fp8 encoder doesn't run on Apple Silicon). Settings → Video → Check ComfyUI confirms both. Clips are saved as MP4 (animated WebP on older ComfyUI).
+Text to Video and Image to Video (LTX) are hidden, along with Settings → Video. LTX through ComfyUI and LTX-2.5 natively with MLX are both kept on the `ltx-mlx` branch; see `Support/ltx-mlx/STATUS.md` there for why it doesn't run on the 24 GB M4 yet.
 
 ## Beats (Settings → Sounds)
 

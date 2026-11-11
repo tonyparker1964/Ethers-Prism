@@ -22,16 +22,24 @@ struct ControlsColumn: View {
 struct GoalSection: View {
     @EnvironmentObject var model: AppModel
 
+    /// The fields on offer, plus this session's own field if it has been retired.
+    private var fields: [any DomainAdapter] {
+        Domains.isRetired(model.adapter.id) ? Domains.all + [model.adapter] : Domains.all
+    }
+
     var body: some View {
         GroupBox("Goal") {
             VStack(alignment: .leading, spacing: 10) {
                 Picker("Field", selection: model.domainBinding) {
-                    ForEach(Domains.all.indices, id: \.self) { i in
-                        let a = Domains.all[i]
-                        Text(a.status.isReady ? a.name : "\(a.name) (unfinished)").tag(a.id)
+                    ForEach(fields.indices, id: \.self) { i in
+                        let a = fields[i]
+                        Text(Domains.isRetired(a.id) ? "\(a.name) (retired)"
+                             : a.status.isReady ? a.name : "\(a.name) (unfinished)").tag(a.id)
                     }
                 }
-                if let note = model.adapter.status.note {
+                if Domains.isRetired(model.adapter.id) {
+                    Banner(style: .info, text: "This field is retired. This session still opens with its results; for new work, choose another field.")
+                } else if let note = model.adapter.status.note {
                     Banner(style: .info, text: "Unfinished field. \(note)")
                 }
                 TextField(placeholder, text: model.goalBinding, axis: .vertical)

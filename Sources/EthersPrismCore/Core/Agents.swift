@@ -18,7 +18,7 @@ public enum AgentRole: String, Codable, CaseIterable, Hashable, Sendable {
     public var job: String {
         switch self {
         case .dialDesigner: return "Proposes dials for a goal."
-        case .writer: return "Writes text, music sketches, storyboards and research plans."
+        case .writer: return "Writes text for the Text field."
         case .artDirector: return "Turns dials and requirements into image prompts."
         case .coder: return "Writes code for the Code field."
         case .checker: return "Reviews each result against the fixed requirements and flags problems. Never rewrites."

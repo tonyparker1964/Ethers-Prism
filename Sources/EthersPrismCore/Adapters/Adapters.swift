@@ -199,10 +199,17 @@ public struct ImageAdapter: DomainAdapter {
 // MARK: - Registry
 
 public enum Domains {
-    public static let all: [any DomainAdapter] = [text, ImageAdapter(), BlenderStageAdapter(), BlenderAnimationAdapter(), TextToVideoAdapter(), ImageToVideoAdapter(), BeatsAdapter(), video, music, code, research]
+    /// The fields offered for new work.
+    public static let all: [any DomainAdapter] = [text, ImageAdapter(), BlenderStageAdapter(), BlenderAnimationAdapter(), BeatsAdapter()]
+
+    /// Fields no longer offered for new work. Sessions made with them still open and keep their results.
+    /// Text to Video and Image to Video are parked until LTX runs on this Mac (branch `ltx-mlx`).
+    public static let retired: [any DomainAdapter] = [TextToVideoAdapter(), ImageToVideoAdapter(), video, music, code, research]
+
+    public static func isRetired(_ id: String) -> Bool { retired.contains { $0.id == id } }
 
     public static func adapter(for id: String) -> any DomainAdapter {
-        all.first { $0.id == id } ?? text
+        all.first { $0.id == id } ?? retired.first { $0.id == id } ?? text
     }
 
     public static let text = TextAdapter(

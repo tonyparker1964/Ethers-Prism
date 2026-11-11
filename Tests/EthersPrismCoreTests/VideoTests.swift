@@ -20,9 +20,10 @@ final class VideoTests: XCTestCase {
 
     func testTextAndImageToVideoAreSeparateReadyFields() {
         let ids = Domains.all.map(\.id)
-        XCTAssertTrue(ids.contains("t2v"))
-        XCTAssertTrue(ids.contains("i2v"))
-        XCTAssertTrue(ids.contains("video"), "old storyboard sessions still open")
+        XCTAssertFalse(ids.contains("t2v"), "parked until LTX runs on this Mac")
+        XCTAssertFalse(ids.contains("i2v"))
+        XCTAssertTrue(Domains.isRetired("t2v") && Domains.isRetired("i2v"))
+        XCTAssertEqual(Domains.adapter(for: "video").id, "video", "old storyboard sessions still open")
         XCTAssertTrue(Domains.adapter(for: "t2v").status.isReady)
         XCTAssertTrue(Domains.adapter(for: "i2v").capabilities.needsVideoProvider)
         XCTAssertEqual(Domains.adapter(for: "t2v").capabilities.kind, .video)
