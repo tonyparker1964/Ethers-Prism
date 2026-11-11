@@ -311,8 +311,11 @@ final class AppModel: ObservableObject {
         update { s in s.constraints.removeAll { c in c.id == id } }
     }
 
+    /// Fields that work without a goal: Line Logo uses the emblem, Animation and 3D Stage their samples.
+    var goalOptional: Bool { ["linelogo", "animate", "stage"].contains(adapter.id) }
+
     func suggestDials() async {
-        guard let s = current, !s.goal.trimmed.isEmpty else {
+        guard let s = current, goalOptional || !s.goal.trimmed.isEmpty else {
             alertMessage = "Describe what you want to make first."
             return
         }
@@ -403,7 +406,7 @@ final class AppModel: ObservableObject {
     /// An automatic preview of a state that is already showing is skipped.
     func generate(_ quality: Quality, force: Bool = false) {
         guard let s = current else { return }
-        guard !s.goal.trimmed.isEmpty else {
+        guard goalOptional || !s.goal.trimmed.isEmpty else {
             phase = .failed("Describe what you want to make first.")
             return
         }
@@ -491,7 +494,7 @@ final class AppModel: ObservableObject {
             alertMessage = error.localizedDescription
             return
         }
-        guard !s.goal.trimmed.isEmpty else {
+        guard goalOptional || !s.goal.trimmed.isEmpty else {
             alertMessage = "Describe what you want to make first."
             return
         }
