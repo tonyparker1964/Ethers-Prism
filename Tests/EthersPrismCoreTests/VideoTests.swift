@@ -187,3 +187,45 @@ final class VideoTests: XCTestCase {
         XCTAssertTrue(Exporter.authorshipLog(s, adapterName: "Text to Video").contains("Video file:"))
     }
 }
+
+final class MLXVideoTests: XCTestCase {
+    private func job(_ w: Int, _ h: Int, quality: Quality, image: Data? = nil) -> VideoJob {
+        VideoJob(prompt: "a prism", negative: "blur", startImage: image, width: w, height: h, frames: 25,
+                 steps: 30, cfg: 3, strength: 0.9, seed: 42, quality: quality)
+    }
+
+    func testSizesAreMultiplesOf64AndUseTheDistilledSteps() {
+        let p = MLXVideoProvider(settings: MLXVideoSettings(previewLongEdge: 448, renderLongEdge: 704))
+        let preview = p.sized(job(512, 288, quality: .preview))
+        XCTAssertEqual(preview.width, 448)
+        XCTAssertEqual(preview.width % 64, 0)
+        XCTAssertEqual(preview.height % 64, 0)
+        XCTAssertEqual(preview.steps, MLXVideoProvider.distilledSteps)
+        XCTAssertEqual(preview.frames, 25, "frame count is kept")
+        let tall = p.sized(job(288, 512, quality: .render))
+        XCTAssertEqual(tall.height, 704)
+        XCTAssertLessThan(tall.width, tall.height)
+    }
+
+    func testArgumentsForTextAndImageToVideo() {
+        let p = MLXVideoProvider(settings: MLXVideoSettings(modelDir: "/m", lowRAM: true))
+        let j = p.sized(job(768, 432, quality: .preview))
+        let t2v = p.arguments(for: j, output: "/o.mp4", startImage: nil, flags: ["--seed"])
+        XCTAssertEqual(Array(t2v.prefix(4)), ["generate", "--model", "/m", "--distilled"])
+        XCTAssertTrue(t2v.contains("--low-ram"))
+        XCTAssertEqual(t2v[t2v.firstIndex(of: "--seed")! + 1], "42")
+        XCTAssertEqual(t2v[t2v.firstIndex(of: "-f")! + 1], "25")
+        XCTAssertEqual(Array(t2v.suffix(2)), ["-o", "/o.mp4"])
+        XCTAssertFalse(t2v.contains("--image"))
+        let noSeed = p.arguments(for: j, output: "/o.mp4", startImage: nil, flags: [])
+        XCTAssertFalse(noSeed.contains("--seed"), "only passes flags this install has")
+        let i2v = p.arguments(for: j, output: "/o.mp4", startImage: "/s.png", flags: [])
+        let i = i2v.firstIndex(of: "--image")!
+        XCTAssertEqual(Array(i2v[i...(i + 3)]), ["--image", "/s.png", "0", "0.90"])
+    }
+
+    func testMissingDriveIsReportedInPlainWords() {
+        let s = MLXVideoSettings(runner: "/nope/ltx.sh", modelDir: "/nope")
+        XCTAssertNotNil(s.missingPiece)
+    }
+}

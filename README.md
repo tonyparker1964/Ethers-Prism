@@ -44,7 +44,12 @@ Mixar is an AI 3D editor built on Blender. Ethers Prism connects through Mixar's
 
 ## Video (Settings → Video)
 
-Two separate fields make real clips on this Mac with **LTX Video** through ComfyUI (the same ComfyUI address as images):
+Two separate fields make real clips on this Mac. Settings → Video picks the engine:
+
+- **LTX-2.5 on this Mac (MLX)**, the default. Lightricks' LTX-2.5 (22B, 4-bit) runs natively on Apple Silicon through [ltx-2-mlx](https://github.com/dgrauet/ltx-2-mlx), from the **MAC Mini 2** drive. Install it once by double-clicking `MAC Mini 2/LTX/Install LTX Video.command` (about 25 GB; the model is gated, so accept its license on Hugging Face and paste a read token when asked). It uses the fast distilled pipeline (8 steps) in low-RAM mode, which a 24 GB Mac needs. Previews default to 448 px, renders to 704 px. Nothing leaves the Mac.
+- **LTX Video through ComfyUI** (the same ComfyUI address as images), described below.
+
+The fields:
 
 - **Text to Video**: describe the shot. Dials: Motion, Camera move, Realism, Mood, Length.
 - **Image to Video**: press **Choose Image…** and add a few words about how it should move. Dials: Motion, Camera move, Faithfulness (how closely the clip keeps your image), Atmosphere, Length.

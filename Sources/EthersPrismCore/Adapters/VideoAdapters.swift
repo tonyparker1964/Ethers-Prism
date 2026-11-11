@@ -95,15 +95,15 @@ public struct TextToVideoAdapter: DomainAdapter {
     }
 
     private func run(_ request: CompiledRequest, _ providers: ProviderSet) async throws -> Generated {
-        guard let video = providers.video else { throw PrismError.comfy("video isn't set up. Open Settings → Video.") }
+        guard let video = providers.video else { throw PrismError.local("Video isn't set up. Open Settings → Video.") }
         let settings = (video as? ComfyVideoProvider)?.settings ?? ComfyVideoSettings()
         let (prompt, negative, director) = try await VideoDirection.prompt(for: request, providers: providers)
         let plan = VideoDirection.plan(request.input, aspect: 16.0 / 9.0, settings: settings)
-        let job = VideoJob(prompt: prompt, negative: negative, width: plan.w, height: plan.h, frames: plan.frames,
-                           steps: plan.steps, cfg: settings.cfg, seed: request.seed, quality: request.input.quality)
+        let job = video.sized(VideoJob(prompt: prompt, negative: negative, width: plan.w, height: plan.h, frames: plan.frames,
+                                       steps: plan.steps, cfg: settings.cfg, seed: request.seed, quality: request.input.quality))
         let result = try await video.generate(job)
         return VideoDirection.output(result, prompt: prompt, job: job, video: video, director: director,
-                                     agent: "Art Director + LTX Video")
+                                     agent: "Art Director + \(video.name)")
     }
 }
 
@@ -151,7 +151,7 @@ public struct ImageToVideoAdapter: DomainAdapter {
     }
 
     private func run(_ request: CompiledRequest, _ providers: ProviderSet) async throws -> Generated {
-        guard let video = providers.video else { throw PrismError.comfy("video isn't set up. Open Settings → Video.") }
+        guard let video = providers.video else { throw PrismError.local("Video isn't set up. Open Settings → Video.") }
         guard let path = StartImage.split(request.input.state.goal).path else {
             throw PrismError.local("Choose a starting image first (the Choose Image… button under the goal).")
         }
@@ -164,11 +164,11 @@ public struct ImageToVideoAdapter: DomainAdapter {
         let aspect = px.map { Double($0.width) / Double(max($0.height, 1)) } ?? 1
         let plan = VideoDirection.plan(request.input, aspect: aspect, settings: settings)
         let start = StartImage.prepared(original, motion: VideoDirection.dial(request.input, "motion", 40))
-        let job = VideoJob(prompt: prompt, negative: negative, startImage: start, width: plan.w, height: plan.h,
-                           frames: plan.frames, steps: plan.steps, cfg: settings.cfg,
-                           strength: Self.strength(request.input), seed: request.seed, quality: request.input.quality)
+        let job = video.sized(VideoJob(prompt: prompt, negative: negative, startImage: start, width: plan.w, height: plan.h,
+                                       frames: plan.frames, steps: plan.steps, cfg: settings.cfg,
+                                       strength: Self.strength(request.input), seed: request.seed, quality: request.input.quality))
         let result = try await video.generate(job)
         return VideoDirection.output(result, prompt: prompt, job: job, video: video, director: director,
-                                     agent: "Art Director + LTX Video (from \((path as NSString).lastPathComponent))")
+                                     agent: "Art Director + \(video.name) (from \((path as NSString).lastPathComponent))")
     }
 }

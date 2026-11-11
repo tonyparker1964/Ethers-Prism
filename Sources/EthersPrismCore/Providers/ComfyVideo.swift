@@ -49,6 +49,12 @@ public protocol VideoProvider: Sendable {
     var name: String { get }
     var model: String { get }
     func generate(_ job: VideoJob) async throws -> ImageResult
+    /// The job as this engine will actually make it (its own sizes and step count).
+    func sized(_ job: VideoJob) -> VideoJob
+}
+
+public extension VideoProvider {
+    func sized(_ job: VideoJob) -> VideoJob { job }
 }
 
 // MARK: - Settings

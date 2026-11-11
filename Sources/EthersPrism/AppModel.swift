@@ -52,6 +52,11 @@ final class AppModel: ObservableObject {
     @Published var comfyVideo: ComfyVideoSettings {
         didSet { if let d = try? JSONEncoder().encode(comfyVideo) { defaults.set(d, forKey: "comfyVideo") } }
     }
+    /// "mlx" runs LTX-2.5 natively on this Mac from the MAC Mini 2 drive; "comfyui" uses ComfyUI.
+    @Published var videoEngine: String { didSet { defaults.set(videoEngine, forKey: "videoEngine") } }
+    @Published var mlxVideo: MLXVideoSettings {
+        didSet { if let d = try? JSONEncoder().encode(mlxVideo) { defaults.set(d, forKey: "mlxVideo") } }
+    }
     @Published var videoModelChoices: [String] = []
     @Published var videoEncoderChoices: [String] = []
     @Published var videoStatus: String?
@@ -102,6 +107,12 @@ final class AppModel: ObservableObject {
             comfyVideo = ComfyVideoSettings()
         }
         soundFolders = UserDefaults.standard.stringArray(forKey: "soundFolders") ?? []
+        videoEngine = UserDefaults.standard.string(forKey: "videoEngine") ?? "mlx"
+        if let d = UserDefaults.standard.data(forKey: "mlxVideo"), let v = try? JSONDecoder().decode(MLXVideoSettings.self, from: d) {
+            mlxVideo = v
+        } else {
+            mlxVideo = MLXVideoSettings()
+        }
         sessions = store.loadAll()
         templates = store.loadTemplates()
         if let d = try? Data(contentsOf: sampleIndexURL), let idx = try? JSONDecoder().decode(SampleIndex.self, from: d) {
@@ -152,9 +163,12 @@ final class AppModel: ObservableObject {
         return ProviderSet(text: provider(for: .writer), image: imageProvider, agents: agents, video: videoProvider)
     }
 
-    /// Video always runs through ComfyUI (same address as images) with LTX Video.
+    /// Video runs LTX-2.5 natively with MLX (the default), or LTX Video through ComfyUI.
     var videoProvider: any VideoProvider {
-        ComfyVideoProvider(baseURL: comfy.baseURL, settings: comfyVideo,
+        if videoEngine == "mlx" {
+            return MLXVideoProvider(settings: mlxVideo, lmStudioURL: team.memoryHandoff ? team.lmStudioURL : nil)
+        }
+        return ComfyVideoProvider(baseURL: comfy.baseURL, settings: comfyVideo,
                            lmStudioURL: team.memoryHandoff ? team.lmStudioURL : nil)
     }
 
@@ -186,7 +200,10 @@ final class AppModel: ObservableObject {
         if adapter.capabilities.needsImageProvider && imageProviderKind == "comfyui" && comfy.checkpoint.trimmed.isEmpty {
             return "Choose a ComfyUI model in Settings before generating images."
         }
-        if adapter.capabilities.needsVideoProvider
+        if adapter.capabilities.needsVideoProvider && videoEngine == "mlx", let missing = mlxVideo.missingPiece {
+            return missing
+        }
+        if adapter.capabilities.needsVideoProvider && videoEngine != "mlx"
             && (comfyVideo.checkpoint.trimmed.isEmpty || comfyVideo.textEncoder.trimmed.isEmpty) {
             return "Choose the LTX Video model and its text encoder in Settings → Video."
         }
@@ -650,6 +667,10 @@ final class AppModel: ObservableObject {
     /// Reads which LTX checkpoints and text encoders ComfyUI can load.
     func checkVideo() async {
         videoStatus = "Checking…"
+        if videoEngine == "mlx" {
+            videoStatus = await MLXVideoProvider.check(mlxVideo)
+            return
+        }
         let client = ComfyClient(baseURL: comfy.baseURL)
         do {
             let all = try await client.options(node: "CheckpointLoaderSimple", input: "ckpt_name")

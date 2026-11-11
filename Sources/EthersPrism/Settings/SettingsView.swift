@@ -150,6 +150,44 @@ struct SettingsView: View {
 
     private var videoTab: some View {
         Form {
+            Section("Engine") {
+                Picker("Video engine", selection: $model.videoEngine) {
+                    Text("LTX-2.5 on this Mac (MLX)").tag("mlx")
+                    Text("LTX Video through ComfyUI").tag("comfyui")
+                }
+                .pickerStyle(.radioGroup)
+                .onChange(of: model.videoEngine) { model.videoStatus = nil }
+            }
+            if model.videoEngine == "mlx" { mlxVideoSection } else { comfyVideoSection }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var mlxVideoSection: some View {
+        Section("LTX-2.5 on this Mac") {
+            Text("Runs Lightricks' LTX-2.5 natively on Apple Silicon with MLX, from the MAC Mini 2 drive. Nothing is sent anywhere. Install it once with Install LTX Video.command in MAC Mini 2 → LTX.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("Check LTX-2.5") { Task { await model.checkVideo() } }
+                if let status = model.videoStatus {
+                    Text(status).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            TextField("Runner", text: $model.mlxVideo.runner)
+            TextField("Model folder", text: $model.mlxVideo.modelDir)
+            Toggle("Low-RAM mode (streams the model from the drive; needed on 24 GB)", isOn: $model.mlxVideo.lowRAM)
+            Picker("Preview size", selection: $model.mlxVideo.previewLongEdge) {
+                ForEach([320, 448, 512, 640], id: \.self) { Text("\($0) px").tag($0) }
+            }
+            Picker("Render size", selection: $model.mlxVideo.renderLongEdge) {
+                ForEach([512, 640, 704, 768, 960], id: \.self) { Text("\($0) px").tag($0) }
+            }
+            Text("Uses the fast distilled pipeline (8 steps). Previews are 1 second; full renders use the Length dial. On a 24 GB Mac expect minutes per second of video, so shape the clip with previews and render the keeper. LM Studio's models are unloaded while a clip renders.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var comfyVideoSection: some View {
             Section("LTX Video through ComfyUI") {
                 Text("Text to Video and Image to Video run on this Mac through ComfyUI at \(model.comfy.baseURL) (the address on the Images tab). They need two files in ComfyUI: the LTX Video model in models/checkpoints and the T5 text encoder in models/text_encoders.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -183,8 +221,6 @@ struct SettingsView: View {
                 Text("Previews are 1 second at 512 px; full renders use the Length dial (1–8 seconds) at 768 px. On a Mac, a full render can take a long time, so try ideas with previews first. While a clip renders, LM Studio's models are unloaded to make room.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-        }
-        .formStyle(.grouped)
     }
 
     private var soundsTab: some View {
