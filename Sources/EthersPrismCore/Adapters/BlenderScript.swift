@@ -253,7 +253,17 @@ except Exception:
     tb = traceback.format_exc()
     # Keep only the part about the user's script.
     lines = tb.splitlines()
-    keep = [l for l in lines if 'runner.py' not in l]
+    # Leave out Prism's own lines: the runner's frame and the ~~~^^^ markers under it.
+    keep = []
+    skip = False
+    for l in lines:
+        if 'runner.py' in l:
+            skip = True
+            continue
+        if skip and (l.strip().startswith('exec(') or set(l.strip()) <= set('~^ ')):
+            continue
+        skip = False
+        keep.append(l)
     open(a['error'], 'w', encoding='utf-8').write('\n'.join(keep))
     sys.exit(0)
 

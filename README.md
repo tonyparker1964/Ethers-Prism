@@ -2,7 +2,7 @@
 
 **Don't ask the AI for the thing. Ask it for an instrument to make the thing.**
 
-**Version 1.3.0** (shown in the sidebar under the logo and in Ethers Prism → About). See [Versions](#versions).
+**Version 1.4.0** (shown in the sidebar under the logo and in Ethers Prism → About). See [Versions](#versions).
 
 Describe a goal and Ethers Prism builds you an editor: dials with named ends, plus fixed requirements. Move the dials, watch previews change, sweep one dial across its range, branch through history, compare states, render the version you choose, and export it with an authorship log. Choosing and editing the dials is part of the authorship.
 
@@ -126,6 +126,7 @@ Sessions, history, sweep, compare, templates, storage and export work automatica
 
 The number lives in `Sources/EthersPrismCore/Core/AppVersion.swift` and `Support/Info.plist` (a test keeps them in step). The middle number goes up for new fields or features, the last for fixes. After an update, run `./install-app.sh` to refresh the copy in Applications.
 
+- **1.4.0** (Nov 11, 2026): Cleaner macOS look: sessions grouped by field with search, Preview and Render in the toolbar and at the bottom of the controls, grouped settings-style controls, History in a side inspector, results shown on a canvas. Blender Script errors show only the script's own lines.
 - **1.3.0** (Nov 11, 2026): Blender Script (from Claude) field: scripts copied from Claude fill in by themselves, are saved in a library, preview as one frame and render as MP4.
 - **1.2.0** (Nov 11, 2026): 3D from Image (Blender) field with Relief and Extrude, metal/glass/neon materials, and Open in 3D Stage.
 - **1.1.0** (Nov 11, 2026): Line Logo (Grease Pencil) field. One app with six working fields; unfinished and LTX fields retired (old sessions still open). Line Logo, Animation and 3D Stage run with an empty goal. Version shown in the sidebar and About box.

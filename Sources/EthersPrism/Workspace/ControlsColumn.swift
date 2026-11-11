@@ -7,14 +7,32 @@ struct ControlsColumn: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                GoalSection()
-                DialsSection()
-                ConstraintsSection()
-                PlaySection()
+        Form {
+            GoalSection()
+            DialsSection()
+            ConstraintsSection()
+            PlaySection()
+        }
+        .formStyle(.grouped)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                Divider()
+                HStack(spacing: 10) {
+                    Button { model.generate(.preview, force: true) } label: {
+                        Label("Preview", systemImage: "eye").frame(maxWidth: .infinity)
+                    }
+                    .controlSize(.large)
+                    .help("Preview (⇧⌘P)")
+                    Button { model.generate(.render, force: true) } label: {
+                        Label("Render", systemImage: "wand.and.stars").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .help("Render Full Quality (⌘R)")
+                }
+                .padding(12)
             }
-            .padding()
+            .background(.bar)
         }
     }
 }
@@ -28,13 +46,13 @@ struct GoalSection: View {
     }
 
     var body: some View {
-        GroupBox("Goal") {
-            VStack(alignment: .leading, spacing: 10) {
+        Section("Goal") {
+            Group {
                 Picker("Field", selection: model.domainBinding) {
                     ForEach(fields.map(\.id), id: \.self) { fid in
                         let a = Domains.adapter(for: fid)
-                        Text(Domains.isRetired(a.id) ? "\(a.name) (retired)"
-                             : a.status.isReady ? a.name : "\(a.name) (unfinished)").tag(a.id)
+                        Label(Domains.isRetired(a.id) ? "\(a.name) (retired)"
+                              : a.status.isReady ? a.name : "\(a.name) (unfinished)", systemImage: a.symbol).tag(a.id)
                     }
                 }
                 // Rebuild the menu per session: otherwise it can keep showing the previous session's field.
@@ -44,10 +62,10 @@ struct GoalSection: View {
                 } else if let note = model.adapter.status.note {
                     Banner(style: .info, text: "Unfinished field. \(note)")
                 }
-                TextField(placeholder, text: model.goalBinding, axis: .vertical)
+                TextField("Goal", text: model.goalBinding, prompt: Text(placeholder), axis: .vertical)
+                    .labelsHidden()
                     .lineLimit(model.adapter.id == "blenderscript" ? 4...12 : 2...6)
                     .font(model.adapter.id == "blenderscript" ? .system(.caption, design: .monospaced) : .body)
-                    .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Goal")
                 if model.adapter.id == "blenderscript" {
                     BlenderScriptRow()
@@ -90,7 +108,6 @@ struct GoalSection: View {
                     if model.suggesting { ProgressView().controlSize(.small) }
                 }
             }
-            .padding(4)
         }
     }
 
@@ -196,8 +213,8 @@ struct DialsSection: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        GroupBox("Dials") {
-            VStack(alignment: .leading, spacing: 16) {
+        Section("Dials") {
+            Group {
                 let dials = model.current?.dials ?? []
                 if dials.isEmpty {
                     Text("Describe a goal and let the AI suggest dials, or add your own. Choosing the dials is part of the authorship.")
@@ -215,8 +232,6 @@ struct DialsSection: View {
                 Button { model.addDial() } label: { Label("Add Dial", systemImage: "plus.circle") }
                     .buttonStyle(.borderless)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(4)
         }
     }
 }
@@ -300,11 +315,8 @@ struct ConstraintsSection: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        GroupBox("Fixed requirements") {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Things that must always hold, like accuracy, accessibility, required or forbidden content. They are never put on a slider.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        Section {
+            Group {
                 ForEach(model.current?.constraints ?? []) { c in
                     ConstraintRow(constraint: model.constraintBinding(c.id))
                 }
@@ -318,8 +330,12 @@ struct ConstraintsSection: View {
                 .menuStyle(.borderlessButton)
                 .fixedSize()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(4)
+        } header: {
+            Text("Fixed requirements")
+        } footer: {
+            Text("Things that must always hold, like accuracy, accessibility, required or forbidden content. They are never put on a slider.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -354,8 +370,8 @@ struct PlaySection: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        GroupBox("Play") {
-            VStack(alignment: .leading, spacing: 10) {
+        Section("Play") {
+            Group {
                 if model.adapter.id == "animate" {
                     Text("Previews are 2-second, low-resolution clips; Render Full Quality makes the full-length 720p clip with your song. Set the dials first, then press Preview. Starting another preview stops the one in progress.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -392,23 +408,16 @@ struct PlaySection: View {
                     .buttonStyle(.borderless)
                 }
                 HStack {
-                    Button { model.generate(.preview, force: true) } label: { Label("Preview", systemImage: "eye") }
                     Button { model.exploreNearby() } label: { Label("Explore Nearby", systemImage: "dice") }
                         .help("Nudge every unlocked dial a little")
+                    Spacer()
+                    Button { model.showSaveTemplate = true } label: {
+                        Label("Save as Template…", systemImage: "square.and.arrow.down.on.square")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(model.current?.dials.isEmpty ?? true)
                 }
-                Button { model.generate(.render, force: true) } label: {
-                    Label("Render Full Quality", systemImage: "wand.and.stars")
-                }
-                .buttonStyle(.borderedProminent)
-                Divider()
-                Button { model.showSaveTemplate = true } label: {
-                    Label("Save Editor as Template…", systemImage: "square.and.arrow.down.on.square")
-                }
-                .buttonStyle(.borderless)
-                .disabled(model.current?.dials.isEmpty ?? true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(4)
         }
     }
 }

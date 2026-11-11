@@ -17,9 +17,10 @@ struct EthersPrismApp: App {
         WindowGroup("Ethers Prism") {
             ContentView()
                 .environmentObject(model)
-                .frame(minWidth: 1180, minHeight: 720)
+                .frame(minWidth: 1040, minHeight: 680)
                 .onAppear { NSApplication.shared.activate(ignoringOtherApps: true) }
         }
+        .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Ethers Prism") {
