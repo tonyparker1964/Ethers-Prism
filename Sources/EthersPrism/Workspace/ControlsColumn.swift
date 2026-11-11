@@ -31,12 +31,14 @@ struct GoalSection: View {
         GroupBox("Goal") {
             VStack(alignment: .leading, spacing: 10) {
                 Picker("Field", selection: model.domainBinding) {
-                    ForEach(fields.indices, id: \.self) { i in
-                        let a = fields[i]
+                    ForEach(fields.map(\.id), id: \.self) { fid in
+                        let a = Domains.adapter(for: fid)
                         Text(Domains.isRetired(a.id) ? "\(a.name) (retired)"
                              : a.status.isReady ? a.name : "\(a.name) (unfinished)").tag(a.id)
                     }
                 }
+                // Rebuild the menu per session: otherwise it can keep showing the previous session's field.
+                .id(model.current?.id)
                 if Domains.isRetired(model.adapter.id) {
                     Banner(style: .info, text: "This field is retired. This session still opens with its results; for new work, choose another field.")
                 } else if let note = model.adapter.status.note {
