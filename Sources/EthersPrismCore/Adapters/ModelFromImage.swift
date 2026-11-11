@@ -22,7 +22,7 @@ public struct ModelFromImageAdapter: DomainAdapter {
         [Dial(name: "Mode", detail: "Relief carves the whole picture by brightness; Extrude pulls its outline or a logo's lines out into a solid.", lowPole: "relief", highPole: "extrude", value: 25),
          Dial(name: "Depth", detail: "How far the shapes rise.", lowPole: "shallow", highPole: "deep", value: 50),
          Dial(name: "Bevel", detail: "Rounded edges on extruded shapes.", lowPole: "sharp", highPole: "soft rounded", value: 40),
-         Dial(name: "Material", detail: "What it's made of: metal, glass (the middle) or neon light.", lowPole: "metal", highPole: "neon", value: 85),
+         Dial(name: "Material", detail: "What it's made of: metal, glass (the middle) or neon light.", lowPole: "metal", highPole: "neon", value: 100),
          Dial(name: "Detail", detail: "How much of the picture becomes shape.", lowPole: "bold and simple", highPole: "every detail", value: 60),
          Dial(name: "Color", detail: "One material color, or the picture's own colors.", lowPole: "one tint", highPole: "picture's colors", value: 100),
          Dial(name: "Light angle", detail: "Low light skims across and makes the carving pop.", lowPole: "low, raking", highPole: "overhead", value: 30),
@@ -44,7 +44,7 @@ public struct ModelFromImageAdapter: DomainAdapter {
         func v(_ key: String, _ fallback: Double) -> Double {
             (input.state.dials.first { $0.name.lowercased().contains(key) }?.value ?? fallback) / 100
         }
-        return ["mode": v("mode", 25), "depth": v("depth", 50), "bevel": v("bevel", 40), "material": v("material", 85),
+        return ["mode": v("mode", 25), "depth": v("depth", 50), "bevel": v("bevel", 40), "material": v("material", 100),
                 "detail": v("detail", 60), "color": v("color", 100), "light": v("light", 30), "tilt": v("camera", 35),
                 "quality": input.quality.rawValue, "image": imagePath(from: input.state.goal) ?? ""]
     }
@@ -334,9 +334,10 @@ uvl.data.foreach_set('uv', uv.ravel())
 
 # ---------------------------------------------------------------- material
 m = a['material']                    # metal (0) ... glass (0.5) ... neon (1)
-w_metal = max(0.0, 1 - 2 * m)
-w_glass = 1 - abs(2 * m - 1)
-w_neon = max(0.0, 2 * m - 1)
+# pure metal on the left quarter, pure neon on the right quarter, glass in the middle
+w_metal = min(1.0, max(0.0, (0.42 - m) / 0.2))
+w_neon = min(1.0, max(0.0, (m - 0.58) / 0.2))
+w_glass = 1.0 - w_metal - w_neon
 color = a['color']                   # one tint (0) ... the picture's colors (1)
 mat = bpy.data.materials.new('Model')
 mat.use_nodes = True
