@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import MachO
+import EthersPrismCore
 
 @main
 struct EthersPrismApp: App {
