@@ -2,11 +2,11 @@
 
 **Don't ask the AI for the thing. Ask it for an instrument to make the thing.**
 
-**Version 1.1.0** (shown in the sidebar under the logo and in Ethers Prism → About). See [Versions](#versions).
+**Version 1.2.0** (shown in the sidebar under the logo and in Ethers Prism → About). See [Versions](#versions).
 
 Describe a goal and Ethers Prism builds you an editor: dials with named ends, plus fixed requirements. Move the dials, watch previews change, sweep one dial across its range, branch through history, compare states, render the version you choose, and export it with an authorship log. Choosing and editing the dials is part of the authorship.
 
-Six fields, all working and all local: **Text**, **Image**, **3D Stage (Blender)**, **Animation (Blender)**, **Line Logo (Grease Pencil)** and **Beats (your samples)**.
+Seven fields, all working and all local: **Text**, **Image**, **3D Stage (Blender)**, **3D from Image (Blender)**, **Animation (Blender)**, **Line Logo (Grease Pencil)** and **Beats (your samples)**.
 
 Retired fields (Video Storyboard, Music Sketch, Code, Research, Text to Video, Image to Video) are no longer offered for new work, but sessions made with them still open with their results. Text to Video and Image to Video are parked on the `ltx-mlx` branch until LTX runs on this Mac.
 
@@ -48,6 +48,10 @@ Mixar is an AI 3D editor built on Blender. Ethers Prism connects through Mixar's
 ## Video (retired for now)
 
 Text to Video and Image to Video (LTX) are hidden, along with Settings → Video. LTX through ComfyUI and LTX-2.5 natively with MLX are both kept on the `ltx-mlx` branch; see `Support/ltx-mlx/STATUS.md` there for why it doesn't run on the 24 GB M4 yet.
+
+## 3D from Image (Blender)
+
+Turns any picture into a 3D model, renders it, and saves the model as a GLB. **Relief** (Mode toward the left) raises the light parts and sinks the dark parts, like a carved plaque; **Extrude** (toward the right) pulls the picture's outline, or a logo's lines, out into a solid with bevelled edges. Pictures with a transparent background are cut out to their shape; on others the background colour is treated as empty. Dials: Mode, Depth, Bevel, Material (metal ↔ glass ↔ neon), Detail, Color (one tint ↔ the picture's colors), Light angle, Camera angle. Previews take a few seconds; Render Full Quality makes a 1080p picture and keeps the model in Documents → Ethers Prism Exports → 3D Models. **Open in 3D Stage** starts a 3D Stage session with the model.
 
 ## Line Logo (Grease Pencil)
 
@@ -118,5 +122,6 @@ Sessions, history, sweep, compare, templates, storage and export work automatica
 
 The number lives in `Sources/EthersPrismCore/Core/AppVersion.swift` and `Support/Info.plist` (a test keeps them in step). The middle number goes up for new fields or features, the last for fixes. After an update, run `./install-app.sh` to refresh the copy in Applications.
 
+- **1.2.0** (Nov 11, 2026): 3D from Image (Blender) field with Relief and Extrude, metal/glass/neon materials, and Open in 3D Stage.
 - **1.1.0** (Nov 11, 2026): Line Logo (Grease Pencil) field. One app with six working fields; unfinished and LTX fields retired (old sessions still open). Line Logo, Animation and 3D Stage run with an empty goal. Version shown in the sidebar and About box.
 - **1.0**: Text, Image, 3D Stage, Animation, Beats, agents, Teach by Example, Mixar connector.

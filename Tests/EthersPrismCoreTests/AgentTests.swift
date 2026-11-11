@@ -254,3 +254,29 @@ final class LineLogoTests: XCTestCase {
         XCTAssertTrue(GreasePencilLogoAdapter.script.contains("use_lights = False"))
     }
 }
+
+final class ModelFromImageTests: XCTestCase {
+    func testModelFromImageIsALocalFieldWithItsDials() async throws {
+        let a = Domains.adapter(for: "model3d")
+        XCTAssertEqual(a.capabilities.kind, .image)
+        XCTAssertFalse(a.capabilities.needsImageProvider, "Blender, not ComfyUI")
+        let dials = try await a.suggestDials(for: "", using: ProviderSet(text: MockTextProvider(), image: nil))
+        XCTAssertEqual(dials.map(\.name), ["Mode", "Depth", "Bevel", "Material", "Detail", "Color", "Light angle", "Camera angle"])
+    }
+
+    func testReadsPictureDialsAndModelPath() {
+        let dials = [Dial(name: "Mode", lowPole: "relief", highPole: "extrude", value: 100),
+                     Dial(name: "Material", lowPole: "metal", highPole: "neon", value: 50),
+                     Dial(name: "Camera angle", lowPole: "a", highPole: "b", value: 0)]
+        let state = WorkingState(goal: "/Users/me/Art/Fiery Tiger.png", domainID: "model3d", dials: dials, constraints: [])
+        let p = ModelFromImageAdapter.parameters(CompileInput(state: state, quality: .render))
+        XCTAssertEqual(p["mode"] as? Double, 1.0)
+        XCTAssertEqual(p["material"] as? Double, 0.5)
+        XCTAssertEqual(p["tilt"] as? Double, 0)
+        XCTAssertEqual(p["image"] as? String, "/Users/me/Art/Fiery Tiger.png")
+        XCTAssertEqual(ModelFromImageAdapter.modelPath(in: "Fiery Tiger.png as a 3D relief. Model: /Users/me/3D Models/Fiery Tiger relief 42.glb"),
+                       "/Users/me/3D Models/Fiery Tiger relief 42.glb")
+        XCTAssertNil(ModelFromImageAdapter.modelPath(in: "no model here"))
+        XCTAssertTrue(ModelFromImageAdapter.script.contains("export_scene.gltf"))
+    }
+}

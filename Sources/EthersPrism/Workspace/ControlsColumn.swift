@@ -58,6 +58,10 @@ struct GoalSection: View {
                         Button { chooseFile(types: ["glb", "gltf", "obj", "fbx"], keepDescription: false) } label: {
                             Label("Choose Model…", systemImage: "cube")
                         }
+                    } else if model.adapter.id == "model3d" {
+                        Button { chooseFile(types: ModelFromImageAdapter.imageExtensions, keepDescription: false) } label: {
+                            Label("Choose Image…", systemImage: "photo")
+                        }
                     } else if model.adapter.id == "linelogo" {
                         Button { chooseFile(types: GreasePencilLogoAdapter.imageExtensions, keepDescription: false) } label: {
                             Label("Choose Logo…", systemImage: "scribble.variable")
@@ -89,6 +93,7 @@ struct GoalSection: View {
         case "i2v": return "Choose a starting image, then say how it should move"
         case "t2v": return "Describe the shot: who or what, doing what, where"
         case "stage": return "Path to a model file (or leave empty for the sample)"
+        case "model3d": return "Choose a picture to turn into a 3D model"
         case "linelogo": return "Optional: choose a logo image (empty uses the Ether Frequency emblem)"
         case "animate": return "Optional: choose a song to pulse to and an image to wrap around the planet"
         default: return "What do you want to make?"
@@ -309,6 +314,9 @@ struct PlaySection: View {
                 if model.adapter.id == "animate" {
                     Text("Previews are 2-second, low-resolution clips; Render Full Quality makes the full-length 720p clip with your song. Set the dials first, then press Preview. Starting another preview stops the one in progress.")
                         .font(.caption).foregroundStyle(.secondary)
+                } else if model.adapter.id == "model3d" {
+                    Text("Previews take a few seconds; Render Full Quality makes a 1080p picture and keeps the model in Documents → Ethers Prism Exports → 3D Models. Open in 3D Stage poses and lights the model.")
+                        .font(.caption).foregroundStyle(.secondary)
                 } else if model.adapter.id == "linelogo" {
                     Text("Previews are 2-second, low-resolution clips and take a few seconds; Render Full Quality makes the full-length 720p clip. Set the dials, then press Preview.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -327,6 +335,18 @@ struct PlaySection: View {
                     Label("Render Full Quality", systemImage: "wand.and.stars")
                 }
                 .buttonStyle(.borderedProminent)
+                if model.adapter.id == "model3d",
+                   let text = model.current?.currentSnapshot?.output.text,
+                   let glb = ModelFromImageAdapter.modelPath(in: text),
+                   FileManager.default.fileExists(atPath: glb) {
+                    Button { model.openInStage(glb) } label: {
+                        Label("Open in 3D Stage", systemImage: "cube")
+                    }
+                    Button { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: glb)]) } label: {
+                        Label("Show Model in Finder", systemImage: "folder")
+                    }
+                    .buttonStyle(.borderless)
+                }
                 Divider()
                 Button { model.showSaveTemplate = true } label: {
                     Label("Save Editor as Template…", systemImage: "square.and.arrow.down.on.square")

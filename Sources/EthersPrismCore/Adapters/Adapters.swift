@@ -200,7 +200,7 @@ public struct ImageAdapter: DomainAdapter {
 
 public enum Domains {
     /// The fields offered for new work.
-    public static let all: [any DomainAdapter] = [text, ImageAdapter(), BlenderStageAdapter(), BlenderAnimationAdapter(), GreasePencilLogoAdapter(), BeatsAdapter()]
+    public static let all: [any DomainAdapter] = [text, ImageAdapter(), BlenderStageAdapter(), ModelFromImageAdapter(), BlenderAnimationAdapter(), GreasePencilLogoAdapter(), BeatsAdapter()]
 
     /// Fields no longer offered for new work. Sessions made with them still open and keep their results.
     /// Text to Video and Image to Video are parked until LTX runs on this Mac (branch `ltx-mlx`).

@@ -255,6 +255,15 @@ final class AppModel: ObservableObject {
         try? store.save(s)
     }
 
+    /// Opens a 3D model file in a new 3D Stage session, ready for camera and lighting dials.
+    func openInStage(_ modelPath: String) {
+        let name = ((modelPath as NSString).lastPathComponent as NSString).deletingPathExtension
+        let s = Session(title: name, goal: modelPath, domainID: "stage")
+        sessions.insert(s, at: 0)
+        selectedID = s.id
+        try? store.save(s)
+    }
+
     func newSession(from template: EditorTemplate, goal: String) {
         let s = template.makeSession(goal: goal)
         sessions.insert(s, at: 0)
