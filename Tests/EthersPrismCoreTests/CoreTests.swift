@@ -204,7 +204,7 @@ final class CompileTests: XCTestCase {
     func testEveryAdapterCompilesAndUnfinishedOnesAreLabeled() {
         let every = Domains.all + Domains.retired
         XCTAssertEqual(Set(every.map(\.id)).count, every.count)
-        XCTAssertEqual(Domains.all.map(\.id), ["text", "image", "stage", "model3d", "animate", "linelogo", "beats"])
+        XCTAssertEqual(Domains.all.map(\.id), ["text", "image", "stage", "model3d", "animate", "linelogo", "blenderscript", "beats"])
         for a in every {
             let r = a.compile(CompileInput(state: state(), quality: .preview))
             XCTAssertFalse(r.text.system.isEmpty)

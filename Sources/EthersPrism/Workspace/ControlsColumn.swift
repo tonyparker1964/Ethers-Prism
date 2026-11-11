@@ -45,9 +45,13 @@ struct GoalSection: View {
                     Banner(style: .info, text: "Unfinished field. \(note)")
                 }
                 TextField(placeholder, text: model.goalBinding, axis: .vertical)
-                    .lineLimit(2...6)
+                    .lineLimit(model.adapter.id == "blenderscript" ? 4...12 : 2...6)
+                    .font(model.adapter.id == "blenderscript" ? .system(.caption, design: .monospaced) : .body)
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Goal")
+                if model.adapter.id == "blenderscript" {
+                    BlenderScriptRow()
+                }
                 if model.adapter.id == "i2v" {
                     StartImageRow()
                 }
@@ -97,6 +101,7 @@ struct GoalSection: View {
         case "stage": return "Path to a model file (or leave empty for the sample)"
         case "model3d": return "Choose a picture to turn into a 3D model"
         case "linelogo": return "Optional: choose a logo image (empty uses the Ether Frequency emblem)"
+        case "blenderscript": return "Copy a Blender script in Claude, then come back: it appears here by itself"
         case "animate": return "Optional: choose a song to pulse to and an image to wrap around the planet"
         default: return "What do you want to make?"
         }
@@ -124,6 +129,44 @@ struct GoalSection: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let words = keepDescription ? StartImage.split(model.current?.goal ?? "").description : ""
         model.goalBinding.wrappedValue = words.isEmpty ? url.path : "\(url.path)\n\(words)"
+    }
+}
+
+/// Blender Script: paste, the saved-script library, and opening the script in Blender.
+struct BlenderScriptRow: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Button { model.pasteScript() } label: { Label("Paste Script", systemImage: "doc.on.clipboard") }
+                Menu {
+                    let items = BlenderScriptAdapter.library()
+                    if items.isEmpty { Text("No saved scripts yet") }
+                    ForEach(items.prefix(40), id: \.self) { path in
+                        Button(((path as NSString).lastPathComponent as NSString).deletingPathExtension) {
+                            model.openLibraryScript(path)
+                        }
+                    }
+                    Divider()
+                    Button("Show Library in Finder") {
+                        try? FileManager.default.createDirectory(atPath: BlenderScriptAdapter.libraryFolder, withIntermediateDirectories: true)
+                        NSWorkspace.shared.open(URL(fileURLWithPath: BlenderScriptAdapter.libraryFolder))
+                    }
+                } label: { Label("Library", systemImage: "books.vertical") }
+                .fixedSize()
+                Button { model.openScriptInBlender() } label: { Label("Open in Blender", systemImage: "cube.transparent") }
+                    .disabled(model.current?.goal.trimmed.isEmpty ?? true)
+            }
+            if let note = model.scriptNote {
+                Text(note).font(.caption).foregroundStyle(.secondary)
+            }
+            Button { model.copyText(BlenderScriptAdapter.claudeInstructions) } label: {
+                Label("Copy Instructions for Claude", systemImage: "text.badge.checkmark")
+            }
+            .buttonStyle(.borderless)
+            .help("Paste these into a Claude project's instructions so its scripts suit this field")
+        }
     }
 }
 
@@ -319,6 +362,13 @@ struct PlaySection: View {
                 } else if model.adapter.id == "model3d" {
                     Text("Previews take a few seconds; Render Full Quality makes a 1080p picture and keeps the model in Documents → Ethers Prism Exports → 3D Models. Open in 3D Stage poses and lights the model.")
                         .font(.caption).foregroundStyle(.secondary)
+                } else if model.adapter.id == "blenderscript" {
+                    Text("Preview renders one frame at half size (the Preview frame dial picks which). Render Full Quality makes the whole animation as an MP4 and keeps it in Documents → Ethers Prism Exports → Blender Scripts.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if case .failed(let message) = model.phase {
+                        Button { model.copyText(message) } label: { Label("Copy Error", systemImage: "exclamationmark.bubble") }
+                            .help("Paste this into Claude so it can fix the script")
+                    }
                 } else if model.adapter.id == "linelogo" {
                     Text("Previews are 2-second, low-resolution clips and take a few seconds; Render Full Quality makes the full-length 720p clip. Set the dials, then press Preview.")
                         .font(.caption).foregroundStyle(.secondary)

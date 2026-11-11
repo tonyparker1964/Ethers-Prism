@@ -280,3 +280,46 @@ final class ModelFromImageTests: XCTestCase {
         XCTAssertTrue(ModelFromImageAdapter.script.contains("export_scene.gltf"))
     }
 }
+
+final class BlenderScriptTests: XCTestCase {
+    func testRecognisesScriptsButNotProse() {
+        XCTAssertTrue(BlenderScriptAdapter.looksLikeScript("# Title: Rings\nimport bpy, math\nbpy.ops.mesh.primitive_torus_add()"))
+        XCTAssertTrue(BlenderScriptAdapter.looksLikeScript("from bpy import data"))
+        XCTAssertFalse(BlenderScriptAdapter.looksLikeScript(BlenderScriptAdapter.claudeInstructions))
+        XCTAssertFalse(BlenderScriptAdapter.looksLikeScript("Use bpy.data to read things"))
+    }
+
+    func testTakesCodeOutOfAClaudeReply() {
+        let reply = "Here you go:\n\n```python\n# Title: Neon Rings\nimport bpy\nprint(1)\n```\n\nIt makes rings."
+        let s = BlenderScriptAdapter.extractScript(reply)
+        XCTAssertEqual(s, "# Title: Neon Rings\nimport bpy\nprint(1)\n")
+        XCTAssertEqual(BlenderScriptAdapter.title(of: s), "Neon Rings")
+        XCTAssertEqual(BlenderScriptAdapter.title(of: "import bpy\n"), "Blender script")
+        XCTAssertEqual(BlenderScriptAdapter.title(of: "# Golden logo turning\nimport bpy"), "Golden logo turning")
+    }
+
+    func testRenderCallsAreSwitchedOff() {
+        let s = BlenderScriptAdapter.sanitized("bpy.ops.render.render(animation=True)\nbpy.ops.wm.quit_blender()")
+        XCTAssertFalse(s.contains("bpy.ops.render.render("))
+        XCTAssertFalse(s.contains("quit_blender("))
+    }
+
+    func testSavesOnceToTheLibrary() throws {
+        let old = BlenderScriptAdapter.libraryFolder
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("prism-lib-\(UUID().uuidString)").path
+        BlenderScriptAdapter.libraryFolder = dir
+        defer { BlenderScriptAdapter.libraryFolder = old; try? FileManager.default.removeItem(atPath: dir) }
+        let script = "# Title: Test/Scene\nimport bpy\n"
+        let a = try BlenderScriptAdapter.saveToLibrary(script)
+        let b = try BlenderScriptAdapter.saveToLibrary(script)
+        XCTAssertEqual(a, b)
+        XCTAssertTrue(a.hasSuffix("Test-Scene.py"))
+        XCTAssertEqual(BlenderScriptAdapter.library(), [a])
+    }
+
+    func testFixedDials() async throws {
+        let a = Domains.adapter(for: "blenderscript")
+        let dials = try await a.suggestDials(for: "", using: ProviderSet(text: MockTextProvider(), image: nil))
+        XCTAssertEqual(dials.map(\.name), ["Preview frame", "Render quality"])
+    }
+}

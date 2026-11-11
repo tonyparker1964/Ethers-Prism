@@ -112,6 +112,95 @@ final class AppModel: ObservableObject {
             BeatsLibrary.shared.taste = t
         }
         if sessions.isEmpty { newSession() } else { selectedID = sessions.first?.id }
+        startClipboardWatch()
+    }
+
+    // MARK: - Blender Script: scripts copied from Claude
+
+    /// What happened with the last script picked up from the clipboard.
+    @Published var scriptNote: String?
+    private var clipboardTimer: Timer?
+    private var lastPasteboardCount = -1
+
+    /// While the Blender Script field is open and Prism is in front, a copied script fills itself in.
+    private func startClipboardWatch() {
+        clipboardTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.checkClipboard() }
+        }
+    }
+
+    private func checkClipboard() {
+        guard adapter.id == "blenderscript", NSApp.isActive else { return }
+        let pb = NSPasteboard.general
+        guard pb.changeCount != lastPasteboardCount else { return }
+        lastPasteboardCount = pb.changeCount
+        guard let raw = pb.string(forType: .string), BlenderScriptAdapter.looksLikeScript(raw) else { return }
+        importScript(raw, automatic: true)
+    }
+
+    /// Paste Script button: takes whatever is on the clipboard now.
+    func pasteScript() {
+        lastPasteboardCount = NSPasteboard.general.changeCount
+        guard let raw = NSPasteboard.general.string(forType: .string), BlenderScriptAdapter.looksLikeScript(raw) else {
+            scriptNote = "The clipboard doesn't hold a Blender script. In Claude, press Copy on the script's code block."
+            return
+        }
+        importScript(raw, automatic: false)
+    }
+
+    /// Copies text from Prism itself, without the clipboard watcher treating it as a new script.
+    func copyText(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        lastPasteboardCount = NSPasteboard.general.changeCount
+    }
+
+    /// Saves the script to the library, puts it in a session and previews it.
+    func importScript(_ raw: String, automatic: Bool) {
+        let script = BlenderScriptAdapter.extractScript(raw)
+        if let existing = sessions.first(where: { $0.domainID == "blenderscript" && $0.goal == script }) {
+            if !automatic {
+                selectedID = existing.id
+                scriptNote = "That script is already open here."
+            }
+            return
+        }
+        let title = BlenderScriptAdapter.title(of: script)
+        let saved: String?
+        do { saved = try BlenderScriptAdapter.saveToLibrary(script) } catch { saved = nil }
+        if let s = current, s.domainID == "blenderscript", s.goal.trimmed.isEmpty {
+            update {
+                $0.goal = script
+                $0.title = title
+                if $0.dials.isEmpty { $0.dials = BlenderScriptAdapter.dials }
+            }
+        } else {
+            let s = Session(title: title, goal: script, domainID: "blenderscript", dials: BlenderScriptAdapter.dials)
+            sessions.insert(s, at: 0)
+            selectedID = s.id
+            try? store.save(s)
+        }
+        scriptNote = "Got “\(title)” from Claude" + (saved.map { " and saved it as \(($0 as NSString).lastPathComponent)." } ?? ". (It couldn't be saved to the library.)")
+        generate(.preview, force: true)
+    }
+
+    /// Opens a saved script from the library.
+    func openLibraryScript(_ path: String) {
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
+            scriptNote = "Couldn't read \((path as NSString).lastPathComponent)."
+            return
+        }
+        importScript(text, automatic: false)
+    }
+
+    func openScriptInBlender() {
+        guard let s = current else { return }
+        do {
+            try BlenderScriptAdapter.openInBlender(BlenderScriptAdapter.extractScript(s.goal))
+            scriptNote = "Opening in Blender…"
+        } catch {
+            alertMessage = error.localizedDescription
+        }
     }
 
     // MARK: - Providers
@@ -219,7 +308,12 @@ final class AppModel: ObservableObject {
     }
 
     var goalBinding: Binding<String> {
-        Binding(get: { self.current?.goal ?? "" }, set: { v in self.update { $0.setGoal(v) } })
+        Binding(get: { self.current?.goal ?? "" }, set: { v in
+            self.update {
+                $0.setGoal(v)
+                if $0.domainID == "blenderscript" { $0.title = BlenderScriptAdapter.title(of: v) }
+            }
+        })
     }
 
     var domainBinding: Binding<String> {
@@ -424,7 +518,9 @@ final class AppModel: ObservableObject {
     func generate(_ quality: Quality, force: Bool = false) {
         guard let s = current else { return }
         guard goalOptional || !s.goal.trimmed.isEmpty else {
-            phase = .failed("Describe what you want to make first.")
+            phase = .failed(adapter.id == "blenderscript"
+                ? "Copy a Blender script from Claude and it fills in here by itself (or press Paste Script)."
+                : "Describe what you want to make first.")
             return
         }
         let issues = DialRules.issues(in: s.dials)

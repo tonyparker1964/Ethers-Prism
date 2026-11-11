@@ -2,11 +2,11 @@
 
 **Don't ask the AI for the thing. Ask it for an instrument to make the thing.**
 
-**Version 1.2.0** (shown in the sidebar under the logo and in Ethers Prism → About). See [Versions](#versions).
+**Version 1.3.0** (shown in the sidebar under the logo and in Ethers Prism → About). See [Versions](#versions).
 
 Describe a goal and Ethers Prism builds you an editor: dials with named ends, plus fixed requirements. Move the dials, watch previews change, sweep one dial across its range, branch through history, compare states, render the version you choose, and export it with an authorship log. Choosing and editing the dials is part of the authorship.
 
-Seven fields, all working and all local: **Text**, **Image**, **3D Stage (Blender)**, **3D from Image (Blender)**, **Animation (Blender)**, **Line Logo (Grease Pencil)** and **Beats (your samples)**.
+Eight fields, all working and all local: **Text**, **Image**, **3D Stage (Blender)**, **3D from Image (Blender)**, **Animation (Blender)**, **Line Logo (Grease Pencil)**, **Blender Script (from Claude)** and **Beats (your samples)**.
 
 Retired fields (Video Storyboard, Music Sketch, Code, Research, Text to Video, Image to Video) are no longer offered for new work, but sessions made with them still open with their results. Text to Video and Image to Video are parked on the `ltx-mlx` branch until LTX runs on this Mac.
 
@@ -56,6 +56,10 @@ Turns any picture into a 3D model, renders it, and saves the model as a GLB. **R
 ## Line Logo (Grease Pencil)
 
 Blender traces a logo image into Grease Pencil lines that draw themselves on, as an MP4. Leave the goal empty to use the Ether Frequency emblem (`Examples/ether-frequency-emblem.png`), or press **Choose Logo…**. Lines keep the logo's own colors (or glow white), draw from the centre outward, boil slightly like hand-drawn animation, and can hold on 2s or 3s; glow lines and bloom make it neon. Dials: Draw speed, Line weight, Wobble, Timing, Glow, Detail, Ink, Camera push, Length. Previews are 2 seconds at 640×360 and take a few seconds; full renders are 720p, 3–12 seconds.
+
+## Blender Script (from Claude)
+
+Ask Claude for a scene and copy the script it writes. With this field open, Prism picks the script up from the clipboard by itself (or press **Paste Script**), saves it in `~/Documents/Ethers Prism Exports/Blender Scripts/`, and previews one frame. **Render Full Quality** renders the whole animation as MP4 (kept in the same folder). **Library** reopens any saved script; **Open in Blender** opens it in Blender's window to tweak by hand; **Copy Error** copies a failed script's error to paste back into Claude. **Copy Instructions for Claude** copies text for a Claude project's instructions so its scripts suit this field (title line, no render calls, Blender 5.2 Grease Pencil notes). Only text that imports `bpy` is picked up, and only while this field is open and Prism is in front.
 
 ## Beats (Settings → Sounds)
 
@@ -122,6 +126,7 @@ Sessions, history, sweep, compare, templates, storage and export work automatica
 
 The number lives in `Sources/EthersPrismCore/Core/AppVersion.swift` and `Support/Info.plist` (a test keeps them in step). The middle number goes up for new fields or features, the last for fixes. After an update, run `./install-app.sh` to refresh the copy in Applications.
 
+- **1.3.0** (Nov 11, 2026): Blender Script (from Claude) field: scripts copied from Claude fill in by themselves, are saved in a library, preview as one frame and render as MP4.
 - **1.2.0** (Nov 11, 2026): 3D from Image (Blender) field with Relief and Extrude, metal/glass/neon materials, and Open in 3D Stage.
 - **1.1.0** (Nov 11, 2026): Line Logo (Grease Pencil) field. One app with six working fields; unfinished and LTX fields retired (old sessions still open). Line Logo, Animation and 3D Stage run with an empty goal. Version shown in the sidebar and About box.
 - **1.0**: Text, Image, 3D Stage, Animation, Beats, agents, Teach by Example, Mixar connector.

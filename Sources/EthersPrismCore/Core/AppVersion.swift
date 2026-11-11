@@ -4,6 +4,6 @@ import Foundation
 /// Keep Support/Info.plist (CFBundleShortVersionString, CFBundleVersion) in step; a test checks it.
 /// Raise the middle number for new fields or features, the last for fixes.
 public enum AppVersion {
-    public static let number = "1.2.0"
-    public static let build = "3"
+    public static let number = "1.3.0"
+    public static let build = "4"
 }
