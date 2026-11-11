@@ -406,3 +406,13 @@ final class ProviderTests: XCTestCase {
         XCTAssertTrue(JSONSerialization.isValidJSONObject(preview))
     }
 }
+
+final class VersionTests: XCTestCase {
+    func testInfoPlistMatchesAppVersion() throws {
+        let plist = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Support/Info.plist")
+        let dict = try XCTUnwrap(NSDictionary(contentsOf: plist))
+        XCTAssertEqual(dict["CFBundleShortVersionString"] as? String, AppVersion.number)
+        XCTAssertEqual(dict["CFBundleVersion"] as? String, AppVersion.build)
+    }
+}

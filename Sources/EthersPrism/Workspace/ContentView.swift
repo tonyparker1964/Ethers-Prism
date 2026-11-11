@@ -22,6 +22,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Ether's Prism").font(.headline)
                         Text("Build the instrument, then play it.").font(.caption2).foregroundStyle(.secondary)
+                        Text("Version \(AppVersion.number)").font(.caption2).foregroundStyle(.tertiary)
                     }
                     Spacer(minLength: 0)
                 }

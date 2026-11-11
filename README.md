@@ -2,9 +2,11 @@
 
 **Don't ask the AI for the thing. Ask it for an instrument to make the thing.**
 
+**Version 1.1.0** (shown in the sidebar under the logo and in Ethers Prism → About). See [Versions](#versions).
+
 Describe a goal and Ethers Prism builds you an editor: dials with named ends, plus fixed requirements. Move the dials, watch previews change, sweep one dial across its range, branch through history, compare states, render the version you choose, and export it with an authorship log. Choosing and editing the dials is part of the authorship.
 
-Five fields, all working and all local: **Text**, **Image**, **3D Stage (Blender)**, **Animation (Blender)** and **Beats (your samples)**.
+Six fields, all working and all local: **Text**, **Image**, **3D Stage (Blender)**, **Animation (Blender)**, **Line Logo (Grease Pencil)** and **Beats (your samples)**.
 
 Retired fields (Video Storyboard, Music Sketch, Code, Research, Text to Video, Image to Video) are no longer offered for new work, but sessions made with them still open with their results. Text to Video and Image to Video are parked on the `ltx-mlx` branch until LTX runs on this Mac.
 
@@ -46,6 +48,10 @@ Mixar is an AI 3D editor built on Blender. Ethers Prism connects through Mixar's
 ## Video (retired for now)
 
 Text to Video and Image to Video (LTX) are hidden, along with Settings → Video. LTX through ComfyUI and LTX-2.5 natively with MLX are both kept on the `ltx-mlx` branch; see `Support/ltx-mlx/STATUS.md` there for why it doesn't run on the 24 GB M4 yet.
+
+## Line Logo (Grease Pencil)
+
+Blender traces a logo image into Grease Pencil lines that draw themselves on, as an MP4. Leave the goal empty to use the Ether Frequency emblem (`Examples/ether-frequency-emblem.png`), or press **Choose Logo…**. Lines keep the logo's own colors (or glow white), draw from the centre outward, boil slightly like hand-drawn animation, and can hold on 2s or 3s; glow lines and bloom make it neon. Dials: Draw speed, Line weight, Wobble, Timing, Glow, Detail, Ink, Camera push, Length. Previews are 2 seconds at 640×360 and take a few seconds; full renders are 720p, 3–12 seconds.
 
 ## Beats (Settings → Sounds)
 
@@ -107,3 +113,10 @@ Tests/EthersPrismCoreTests
 3. If it produces a new kind of output, add a case to `OutputKind` and one display in `Displays/Displays.swift`.
 
 Sessions, history, sweep, compare, templates, storage and export work automatically. Mark a field `.unfinished("what it can't do yet")` until it truly delivers. `Session.projectID` is reserved for linking sessions across fields under one project later.
+
+## Versions
+
+The number lives in `Sources/EthersPrismCore/Core/AppVersion.swift` and `Support/Info.plist` (a test keeps them in step). The middle number goes up for new fields or features, the last for fixes. After an update, run `./install-app.sh` to refresh the copy in Applications.
+
+- **1.1.0** (Nov 11, 2026): Line Logo (Grease Pencil) field. One app with six working fields; unfinished and LTX fields retired (old sessions still open). Line Logo, Animation and 3D Stage run with an empty goal. Version shown in the sidebar and About box.
+- **1.0**: Text, Image, 3D Stage, Animation, Beats, agents, Teach by Example, Mixar connector.

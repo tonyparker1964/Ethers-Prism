@@ -24,6 +24,8 @@ struct EthersPrismApp: App {
                 Button("About Ethers Prism") {
                     var options: [NSApplication.AboutPanelOptionKey: Any] = [:]
                     if let icon = AppIcon.image { options[.applicationIcon] = icon }
+                    options[.applicationVersion] = AppVersion.number
+                    options[.version] = "build \(AppVersion.build)"
                     NSApplication.shared.orderFrontStandardAboutPanel(options: options)
                 }
             }
