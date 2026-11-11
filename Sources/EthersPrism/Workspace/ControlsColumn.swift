@@ -58,6 +58,10 @@ struct GoalSection: View {
                         Button { chooseFile(types: ["glb", "gltf", "obj", "fbx"], keepDescription: false) } label: {
                             Label("Choose Model…", systemImage: "cube")
                         }
+                    } else if model.adapter.id == "linelogo" {
+                        Button { chooseFile(types: GreasePencilLogoAdapter.imageExtensions, keepDescription: false) } label: {
+                            Label("Choose Logo…", systemImage: "scribble.variable")
+                        }
                     } else if model.adapter.id == "animate" {
                         Button { chooseAnimationFile(song: true) } label: {
                             Label("Choose Song…", systemImage: "music.note")
@@ -85,6 +89,7 @@ struct GoalSection: View {
         case "i2v": return "Choose a starting image, then say how it should move"
         case "t2v": return "Describe the shot: who or what, doing what, where"
         case "stage": return "Path to a model file (or leave empty for the sample)"
+        case "linelogo": return "Optional: choose a logo image (empty uses the Ether Frequency emblem)"
         case "animate": return "Optional: choose a song to pulse to and an image to wrap around the planet"
         default: return "What do you want to make?"
         }
@@ -303,6 +308,9 @@ struct PlaySection: View {
             VStack(alignment: .leading, spacing: 10) {
                 if model.adapter.id == "animate" {
                     Text("Previews are 2-second, low-resolution clips; Render Full Quality makes the full-length 720p clip with your song. Set the dials first, then press Preview. Starting another preview stops the one in progress.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if model.adapter.id == "linelogo" {
+                    Text("Previews are 2-second, low-resolution clips and take a few seconds; Render Full Quality makes the full-length 720p clip. Set the dials, then press Preview.")
                         .font(.caption).foregroundStyle(.secondary)
                 } else if model.adapter.capabilities.needsVideoProvider {
                     Text("Video previews take a few minutes on a Mac, so set the dials first, then press Preview. Starting another preview stops the one in progress.")

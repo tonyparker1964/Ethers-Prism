@@ -227,3 +227,30 @@ final class AgentTests: XCTestCase {
         XCTAssertEqual(tools, [MCPTool(name: "mixar_render", description: "Render")])
     }
 }
+
+final class LineLogoTests: XCTestCase {
+    func testLineLogoIsALocalVideoFieldWithItsOwnDials() async throws {
+        let a = Domains.adapter(for: "linelogo")
+        XCTAssertEqual(a.capabilities.kind, .video)
+        XCTAssertFalse(a.capabilities.needsVideoProvider, "Blender, not ComfyUI")
+        let dials = try await a.suggestDials(for: "", using: ProviderSet(text: MockTextProvider(), image: nil))
+        XCTAssertEqual(dials.map(\.name), ["Draw speed", "Line weight", "Wobble", "Timing", "Glow", "Detail", "Ink", "Camera push", "Length"])
+    }
+
+    func testLineLogoReadsTheImageAndDials() {
+        XCTAssertEqual(GreasePencilLogoAdapter.imagePath(from: "neon version\n/Volumes/Art/My Logo.PNG"), "/Volumes/Art/My Logo.PNG")
+        XCTAssertNil(GreasePencilLogoAdapter.imagePath(from: "just words"))
+        let dials = [Dial(name: "Glow", lowPole: "a", highPole: "b", value: 80),
+                     Dial(name: "Camera push", lowPole: "a", highPole: "b", value: 0)]
+        let state = WorkingState(goal: "", domainID: "linelogo", dials: dials, constraints: [])
+        let p = GreasePencilLogoAdapter.parameters(CompileInput(state: state, quality: .preview))
+        XCTAssertEqual(p["glow"] as? Double, 0.8)
+        XCTAssertEqual(p["drift"] as? Double, 0)
+        XCTAssertEqual(p["image"] as? String, GreasePencilLogoAdapter.defaultLogo, "empty goal uses the emblem")
+        XCTAssertEqual(p["quality"] as? String, "preview")
+        let r1 = GreasePencilLogoAdapter().compile(CompileInput(state: state, quality: .preview))
+        let r2 = GreasePencilLogoAdapter().compile(CompileInput(state: state, quality: .preview))
+        XCTAssertEqual(r1.seed, r2.seed, "same dials, same clip")
+        XCTAssertTrue(GreasePencilLogoAdapter.script.contains("use_lights = False"))
+    }
+}
