@@ -9,21 +9,22 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             SessionSidebar(search: $search)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
+                .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 320)
         } detail: {
             if let s = model.current {
-                HSplitView {
+                HStack(spacing: 0) {
                     ControlsColumn()
-                        .frame(minWidth: 330, idealWidth: 380, maxWidth: 500)
+                        .frame(width: 350)
+                    Divider()
                     OutputColumn()
-                        .frame(minWidth: 420, maxWidth: .infinity)
+                        .frame(minWidth: 360, maxWidth: .infinity)
                 }
                 .navigationTitle(SessionTitle.display(s.title))
                 .navigationSubtitle(model.adapter.name)
                 .toolbar { WorkspaceToolbar(showHistory: $showHistory) }
                 .inspector(isPresented: $showHistory) {
                     HistoryColumn()
-                        .inspectorColumnWidth(min: 220, ideal: 260, max: 360)
+                        .inspectorColumnWidth(min: 230, ideal: 260, max: 360)
                 }
             } else {
                 ContentUnavailableView {
