@@ -169,7 +169,8 @@ struct SessionRow: View {
         Label {
             VStack(alignment: .leading, spacing: 1) {
                 Text(SessionTitle.display(session.title)).lineLimit(1)
-                Text(session.updatedAt.formatted(.relative(presentation: .named)))
+                // When it last made something (opening a session alone doesn't count).
+                Text((session.snapshots.map(\.createdAt).max() ?? session.createdAt).formatted(.relative(presentation: .named)))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
