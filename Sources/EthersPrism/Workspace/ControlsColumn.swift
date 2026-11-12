@@ -154,7 +154,7 @@ struct BlenderScriptRow: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Button { model.pasteScript() } label: { Label("Paste Script", systemImage: "doc.on.clipboard") }
                 Menu {
@@ -172,17 +172,21 @@ struct BlenderScriptRow: View {
                     }
                 } label: { Label("Library", systemImage: "books.vertical") }
                 .fixedSize()
+                Spacer(minLength: 0)
+            }
+            HStack {
                 Button { model.openScriptInBlender() } label: { Label("Open in Blender", systemImage: "cube.transparent") }
                     .disabled(model.current?.goal.trimmed.isEmpty ?? true)
+                Spacer(minLength: 0)
+                Button { model.copyText(BlenderScriptAdapter.claudeInstructions) } label: {
+                    Label("Claude Instructions", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                .help("Copy text for a Claude project's instructions, so its scripts suit this field")
             }
             if let note = model.scriptNote {
                 Text(note).font(.caption).foregroundStyle(.secondary)
             }
-            Button { model.copyText(BlenderScriptAdapter.claudeInstructions) } label: {
-                Label("Copy Instructions for Claude", systemImage: "text.badge.checkmark")
-            }
-            .buttonStyle(.borderless)
-            .help("Paste these into a Claude project's instructions so its scripts suit this field")
         }
     }
 }
@@ -412,9 +416,10 @@ struct PlaySection: View {
                         .help("Nudge every unlocked dial a little")
                     Spacer()
                     Button { model.showSaveTemplate = true } label: {
-                        Label("Save as Template…", systemImage: "square.and.arrow.down.on.square")
+                        Label("Save Template…", systemImage: "square.and.arrow.down.on.square")
                     }
                     .buttonStyle(.borderless)
+                    .fixedSize()
                     .disabled(model.current?.dials.isEmpty ?? true)
                 }
             }
