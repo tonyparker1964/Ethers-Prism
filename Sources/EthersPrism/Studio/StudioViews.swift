@@ -386,16 +386,28 @@ struct StudioInspector: View {
 
             ForEach(StudioControls.enhance) { c in
                 PrismSlider(control: c, value: studio.binding(c.id)) { studio.commit(c.label) }
+                if c.id == "upscaleFactor" {
+                    Picker("Mode", selection: Binding(get: { studio.edit.upscaleMode },
+                                                      set: { studio.edit.upscaleMode = $0; studio.commit("Upscale Mode") })) {
+                        ForEach(UpscaleMode.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .help("Sharper: more detail and crisper edges. Smoother: cleaner, softer result.")
+                    if studio.hasImage {
+                        let f = studio.edit.upscaleFactor
+                        let s = StudioRenderer.pixelSize(source: studio.sourceSize, edit: studio.edit, size: .scale(f))
+                        Button("Upscale \(StudioControls.byID["upscaleFactor"]!.format(f)) → \(Int(s.width))×\(Int(s.height))") {
+                            studio.enhance(.scale(f), tag: StudioControls.byID["upscaleFactor"]!.format(f).replacingOccurrences(of: "×", with: "x"))
+                        }
+                        .buttonStyle(PrismToolButtonStyle(active: true))
+                        .disabled(studio.isBusy || f <= 1)
+                    }
+                    Divider().padding(.vertical, 2)
+                }
             }
-            Text("These settings apply whenever the picture is made larger: Upscale, Enhance to 4K, and exports at 2×, 4× or 3840×2160.")
+            Text("Detail, noise, edge and texture settings apply whenever the picture is made larger: Upscale, Enhance to 4K, and exports at 2×, 4× or 3840×2160.")
                 .font(.caption).foregroundStyle(PrismTheme.secondaryText)
-
-            HStack(spacing: 8) {
-                Button("Upscale 2×") { studio.enhance(.scale(2), tag: "2x") }
-                Button("Upscale 4×") { studio.enhance(.scale(4), tag: "4x") }
-            }
-            .buttonStyle(PrismToolButtonStyle())
-            .disabled(studio.isBusy)
 
             Button {
                 studio.enhance(.longEdge4K, tag: "4K")

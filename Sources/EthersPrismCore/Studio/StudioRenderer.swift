@@ -202,15 +202,17 @@ public enum StudioRenderer {
         let extent = image.extent
         var img = image.clampedToExtent()
         let texture = edit["enhanceTexture"] / 100
+        let w = edit.upscaleMode.weights
+        // Noise reduction happens before the enlargement so grain isn't blown up with the picture.
         if edit["enhanceNoise"] > 0 {
             img = img.applyingFilter("CINoiseReduction", parameters: [
-                "inputNoiseLevel": edit["enhanceNoise"] / 100 * 0.04, "inputSharpness": 0.3 + texture * 1.7])
+                "inputNoiseLevel": edit["enhanceNoise"] / 100 * 0.04 * w.noise, "inputSharpness": 0.3 + texture * 1.7])
         }
         img = img.cropped(to: extent)
         img = lanczos(img, factor).clampedToExtent()
         let big = CGRect(x: 0, y: 0, width: (extent.width * factor).rounded(), height: (extent.height * factor).rounded())
         if factor > 1 {
-            let detail = edit["enhanceDetail"] / 100
+            let detail = edit["enhanceDetail"] / 100 * w.detail
             if detail > 0 {
                 img = img.applyingFilter("CIUnsharpMask", parameters: [
                     kCIInputRadiusKey: 1.2 * factor, kCIInputIntensityKey: detail * 0.7])
@@ -220,7 +222,7 @@ public enum StudioRenderer {
             }
             if edit["enhanceEdges"] > 0 {
                 img = img.applyingFilter("CISharpenLuminance", parameters: [
-                    kCIInputSharpnessKey: edit["enhanceEdges"] / 100 * 0.6, kCIInputRadiusKey: 1.0])
+                    kCIInputSharpnessKey: edit["enhanceEdges"] / 100 * 0.6 * w.edges, kCIInputRadiusKey: 1.0])
             }
         }
         return img.cropped(to: big)

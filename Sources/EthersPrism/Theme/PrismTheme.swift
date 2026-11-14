@@ -99,8 +99,12 @@ struct PrismSlider: View {
                     .foregroundStyle(value == control.neutral ? PrismTheme.secondaryText : PrismTheme.teal)
                     .frame(minWidth: 52, alignment: .trailing)
             }
-            Slider(value: $value, in: control.range) { editing in
-                if !editing { onCommit() }
+            Group {
+                if let step = control.step {
+                    Slider(value: $value, in: control.range, step: step) { editing in if !editing { onCommit() } }
+                } else {
+                    Slider(value: $value, in: control.range) { editing in if !editing { onCommit() } }
+                }
             }
             .controlSize(.small)
             .tint(PrismTheme.teal)

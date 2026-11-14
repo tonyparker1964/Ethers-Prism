@@ -8,9 +8,12 @@ public struct StudioControl: Identifiable, Hashable, Sendable {
     public let range: ClosedRange<Double>
     public let neutral: Double
     public let unit: String
+    /// Snap size, if the slider moves in steps.
+    public let step: Double?
 
-    public init(_ id: String, _ label: String, _ range: ClosedRange<Double>, neutral: Double = 0, unit: String = "") {
-        self.id = id; self.label = label; self.range = range; self.neutral = neutral; self.unit = unit
+    public init(_ id: String, _ label: String, _ range: ClosedRange<Double>, neutral: Double = 0, unit: String = "",
+                step: Double? = nil) {
+        self.id = id; self.label = label; self.range = range; self.neutral = neutral; self.unit = unit; self.step = step
     }
 
     /// How the value is shown next to the slider.
@@ -18,6 +21,7 @@ public struct StudioControl: Identifiable, Hashable, Sendable {
         switch unit {
         case "EV": return String(format: "%+.2f EV", v)
         case "%": return "\(Int(v.rounded()))%"
+        case "×": return v == v.rounded() ? "\(Int(v))×" : String(format: "%.1f×", v)
         default: return v == 0 ? "0" : String(format: "%+d", Int(v.rounded()))
         }
     }
@@ -69,6 +73,37 @@ public struct UnitRect: Codable, Equatable, Hashable, Sendable {
     public static let full = UnitRect(x: 0, y: 0, width: 1, height: 1)
 }
 
+/// How an upscale treats detail (after DaVinci Resolve's Super Scale modes).
+public enum UpscaleMode: Int, CaseIterable, Identifiable, Sendable {
+    case standard = 0, sharper = 1, smoother = 2
+    public var id: Int { rawValue }
+    public var label: String {
+        switch self {
+        case .standard: return "Standard"
+        case .sharper: return "Sharper"
+        case .smoother: return "Smoother"
+        }
+    }
+    /// Multipliers for detail recovery, edge refinement and noise reduction.
+    public var weights: (detail: Double, edges: Double, noise: Double) {
+        switch self {
+        case .standard: return (1, 1, 1)
+        case .sharper: return (1.35, 1.3, 0.8)
+        case .smoother: return (0.55, 0.45, 1.5)
+        }
+    }
+}
+
+extension StudioEdit {
+    /// Kept in `values` under "upscaleMode" (0 = Standard).
+    public var upscaleMode: UpscaleMode {
+        get { UpscaleMode(rawValue: Int(values["upscaleMode"] ?? 0)) ?? .standard }
+        set { values["upscaleMode"] = newValue == .standard ? nil : Double(newValue.rawValue) }
+    }
+    /// The 4K Upscale slider (1×–4×).
+    public var upscaleFactor: Double { self["upscaleFactor"] }
+}
+
 public enum StudioTab: String, CaseIterable, Identifiable, Sendable {
     case adjust, realism, enhance
     public var id: String { rawValue }
@@ -107,6 +142,7 @@ public enum StudioControls {
     ]
     /// Applied when the picture is made bigger (Enhance to 4K, Upscale, export at 2×/4×/4K).
     public static let enhance: [StudioControl] = [
+        StudioControl("upscaleFactor", "4K Upscale", 1...4, neutral: 2, unit: "×", step: 0.5),
         StudioControl("enhanceDetail", "Detail Recovery", 0...100, neutral: 60, unit: "%"),
         StudioControl("enhanceNoise", "Noise Reduction", 0...100, neutral: 30, unit: "%"),
         StudioControl("enhanceEdges", "Edge Refinement", 0...100, neutral: 40, unit: "%"),

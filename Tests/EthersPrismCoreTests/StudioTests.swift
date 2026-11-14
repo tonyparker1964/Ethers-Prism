@@ -62,11 +62,25 @@ final class StudioTests: XCTestCase {
 
     func testEnhanceSlidersChangeTheUpscale() {
         let base = pixels(StudioRenderer.upscale(sample(), factor: 2, StudioEdit()))
-        for c in StudioControls.enhance {
+        for c in StudioControls.enhance where c.id != "upscaleFactor" {
             var e = StudioEdit()
             e[c.id] = c.id == "enhanceDetail" ? 100 : (c.neutral == 0 ? 100 : 0)
             XCTAssertNotEqual(pixels(StudioRenderer.upscale(sample(), factor: 2, e)), base, "\(c.id) had no effect")
         }
+    }
+
+    func testFourKSliderAndModes() {
+        var e = StudioEdit()
+        XCTAssertEqual(e.upscaleFactor, 2)
+        e["upscaleFactor"] = 3.5
+        XCTAssertEqual(StudioRenderer.render(sample(), e, size: .scale(e.upscaleFactor)).extent.size, CGSize(width: 700, height: 350))
+        XCTAssertEqual(StudioControls.byID["upscaleFactor"]?.format(3.5), "3.5×")
+        XCTAssertEqual(StudioControls.byID["upscaleFactor"]?.format(4), "4×")
+        let standard = pixels(StudioRenderer.upscale(sample(), factor: 2, e))
+        e.upscaleMode = .sharper
+        XCTAssertNotEqual(pixels(StudioRenderer.upscale(sample(), factor: 2, e)), standard)
+        e.upscaleMode = .standard
+        XCTAssertNil(e.values["upscaleMode"])
     }
 
     func testExposureBrightensAndWarmthWarms() {
