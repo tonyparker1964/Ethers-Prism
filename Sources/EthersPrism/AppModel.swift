@@ -373,10 +373,10 @@ final class AppModel: ObservableObject {
         store.assetsDir.appendingPathComponent(sessionID.uuidString).appendingPathComponent("Drawing.blend")
     }
 
-    func openGreasePencilDrawing(reference: URL? = nil, automaticTrace: Bool = false, multiShot: Bool = false) {
+    func openGreasePencilDrawing(reference: URL? = nil, automaticTrace: Bool = false, multiShot: Bool = false, walkPoses: [URL] = []) {
         guard !creatingDrawing else { return }
-        let existing = adapter.id == "linelogo" && reference == nil ? current : nil
-        let session = existing ?? Session(title: "Grease Pencil Drawing", domainID: "linelogo")
+        let existing = adapter.id == "linelogo" && reference == nil && walkPoses.isEmpty ? current : nil
+        let session = existing ?? Session(title: walkPoses.isEmpty ? "Grease Pencil Drawing" : "Walk Cycle", domainID: "linelogo")
         let drawing = drawingProject(for: session.id)
         let projectName = multiShot ? "Multi-Shot.blend" : "Auto Trace.blend"
         let project = automaticTrace ? drawing.deletingLastPathComponent().appendingPathComponent(projectName) : drawing
@@ -400,7 +400,9 @@ final class AppModel: ObservableObject {
             let script = folder.appendingPathComponent("Create Drawing.py")
             let movie = folder.appendingPathComponent(multiShot ? "Multi-Shot Animation" : (automaticTrace ? "Auto Trace Animation" : "Animation"))
             let setup: String
-            if automaticTrace, let reference {
+            if !walkPoses.isEmpty {
+                setup = try GreasePencilProject.walkScript(poses: walkPoses)
+            } else if automaticTrace, let reference {
                 var state = session.workingState
                 state.goal = reference.path
                 setup = try GreasePencilLogoAdapter.editableTrace(state, project: project, movie: movie, multiShot: multiShot)
@@ -436,6 +438,23 @@ final class AppModel: ObservableObject {
         } catch {
             alertMessage = error.localizedDescription
         }
+    }
+
+    func chooseWalkPoses() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Walk Poses"
+        panel.message = "Choose four or eight transparent PNGs named in playback order (01.png, 02.png, …)."
+        panel.allowedContentTypes = [.png]
+        panel.allowsMultipleSelection = true
+        guard panel.runModal() == .OK else { return }
+        let poses = panel.urls.sorted {
+            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+        }
+        guard [4, 8].contains(poses.count) else {
+            alertMessage = "Choose four or eight pose images."
+            return
+        }
+        openGreasePencilDrawing(walkPoses: poses)
     }
 
     func importGreasePencilAnimation() {
