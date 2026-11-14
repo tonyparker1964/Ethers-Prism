@@ -278,11 +278,17 @@ private struct GreasePencilStyles: View {
         case photo = "Photo Reveal"
         case ink = "Draw-On"
         case mixed = "Ink + Photo"
+        case anime = "Anime"
 
         var values: [String: Double] {
             switch self {
             case .photo: return ["Photo reveal": 100, "Stroke opacity": 0, "Glow": 0, "Reveal easing": 65]
             case .ink: return ["Photo reveal": 0, "Stroke opacity": 100, "Glow": 0, "Line weight": 20, "Reveal easing": 0]
+            case .anime:
+                return ["Photo reveal": 100, "Stroke opacity": 35, "Glow": 0,
+                        "Line weight": 8, "Detail": 60, "Edge sensitivity": 45, "Path precision": 80,
+                        "Ink fidelity": 85, "Ink": 0, "Contrast": 62, "Saturation": 68,
+                        "Timing": 50, "Stroke stability": 100, "Reveal easing": 45]
             case .mixed: return ["Photo reveal": 100, "Stroke opacity": 25, "Glow": 0, "Line weight": 10, "Reveal easing": 65]
             }
         }
@@ -355,8 +361,8 @@ private struct GreasePencilStyles: View {
             RoundedRectangle(cornerRadius: 6).fill(.black)
             Image(systemName: style == .ink ? "scribble" : "mountain.2.fill")
                 .font(.system(size: 25))
-                .foregroundStyle(style == .ink ? Color.white : Color.orange)
-            if style == .mixed {
+                .foregroundStyle(style == .ink ? Color.white : (style == .anime ? Color.pink : Color.orange))
+            if style == .mixed || style == .anime {
                 Image(systemName: "mountain.2")
                     .font(.system(size: 25))
                     .foregroundStyle(.white)
