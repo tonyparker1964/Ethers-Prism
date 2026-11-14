@@ -314,7 +314,31 @@ private struct GreasePencilStyles: View {
         ("Desert Oracle Film Still", [53, 56, 47, 75, 6, 5])
     ]
 
-    private func visionDials(_ values: [Double]) -> [String: Double] {
+    private let threeD: [(name: String, values: [Double])] = [
+        ("Cinematic 3D Animation", [51, 62, 65, 54, 8, 8]),
+        ("Claymation", [53, 44, 50, 61, 0, 5]),
+        ("Low-Poly 3D", [50, 68, 60, 50, 0, 23]),
+        ("Stop-Motion Puppet", [49, 55, 55, 64, 0, 6]),
+        ("Cel-Shaded 3D", [52, 65, 75, 50, 0, 40]),
+        ("Isometric Diorama", [56, 52, 65, 57, 0, 13]),
+        ("Photorealistic CGI", [50, 55, 51, 50, 0, 0]),
+        ("Designer Vinyl Toy", [55, 57, 74, 51, 4, 0]),
+        ("Voxel Art", [52, 68, 80, 47, 0, 28]),
+        ("Glass and Crystal 3D", [57, 68, 49, 30, 22, 9]),
+        ("Sculpted Metal 3D", [47, 75, 24, 45, 10, 15]),
+        ("Architectural Clay Render", [56, 51, 0, 52, 0, 10]),
+        ("Needle Felt", [54, 42, 58, 60, 0, 4]),
+        ("Origami 3D", [56, 63, 55, 53, 0, 25]),
+        ("Knitted Yarn", [52, 47, 61, 66, 0, 7]),
+        ("Toy Brick Build", [56, 60, 82, 51, 4, 13]),
+        ("Porcelain Figurine", [58, 56, 43, 42, 5, 4]),
+        ("Wood Carving", [47, 64, 41, 79, 0, 23]),
+        ("Hologram", [48, 65, 67, 16, 45, 60]),
+        ("Marble Statue", [57, 62, 8, 48, 0, 11]),
+        ("Balloon Inflatable", [59, 49, 88, 53, 7, 0])
+    ]
+
+    private func studioDials(_ values: [Double]) -> [String: Double] {
         let names = ["Exposure", "Contrast", "Saturation", "Warmth", "Glow", "Stroke opacity"]
         var dials = Style.mixed.values
         for (name, value) in zip(names, values) { dials[name] = value }
@@ -343,16 +367,19 @@ private struct GreasePencilStyles: View {
                 }
                 .buttonStyle(.borderless)
             }
-            Menu("Visions Styles") {
-                ForEach(visions.indices, id: \.self) { index in
-                    let vision = visions[index]
-                    Button(vision.name) {
-                        model.applyGreasePencilStyle(visionDials(vision.values))
-                    }
-                }
-            }
+            studioMenu("Visions Styles", presets: visions)
+            studioMenu("3D Styles", presets: threeD)
             Text("Select a sample to update the dials. Play Preview to see the reveal.")
                 .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func studioMenu(_ title: String, presets: [(name: String, values: [Double])]) -> some View {
+        Menu(title) {
+            ForEach(presets.indices, id: \.self) { index in
+                let preset = presets[index]
+                Button(preset.name) { model.applyGreasePencilStyle(studioDials(preset.values)) }
+            }
         }
     }
 
