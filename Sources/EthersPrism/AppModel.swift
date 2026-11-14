@@ -373,12 +373,13 @@ final class AppModel: ObservableObject {
         store.assetsDir.appendingPathComponent(sessionID.uuidString).appendingPathComponent("Drawing.blend")
     }
 
-    func openGreasePencilDrawing(reference: URL? = nil, automaticTrace: Bool = false) {
+    func openGreasePencilDrawing(reference: URL? = nil, automaticTrace: Bool = false, multiShot: Bool = false) {
         guard !creatingDrawing else { return }
         let existing = adapter.id == "linelogo" && reference == nil ? current : nil
         let session = existing ?? Session(title: "Grease Pencil Drawing", domainID: "linelogo")
         let drawing = drawingProject(for: session.id)
-        let project = automaticTrace ? drawing.deletingLastPathComponent().appendingPathComponent("Auto Trace.blend") : drawing
+        let projectName = multiShot ? "Multi-Shot.blend" : "Auto Trace.blend"
+        let project = automaticTrace ? drawing.deletingLastPathComponent().appendingPathComponent(projectName) : drawing
         let blender = URL(fileURLWithPath: BlenderStageAdapter.blenderPath)
         guard FileManager.default.isExecutableFile(atPath: blender.path) else {
             alertMessage = "Install Blender in Applications to open a Grease Pencil drawing."
@@ -397,12 +398,12 @@ final class AppModel: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let script = folder.appendingPathComponent("Create Drawing.py")
-            let movie = folder.appendingPathComponent(automaticTrace ? "Auto Trace Animation" : "Animation")
+            let movie = folder.appendingPathComponent(multiShot ? "Multi-Shot Animation" : (automaticTrace ? "Auto Trace Animation" : "Animation"))
             let setup: String
             if automaticTrace, let reference {
                 var state = session.workingState
                 state.goal = reference.path
-                setup = try GreasePencilLogoAdapter.editableTrace(state, project: project, movie: movie)
+                setup = try GreasePencilLogoAdapter.editableTrace(state, project: project, movie: movie, multiShot: multiShot)
             } else {
                 setup = GreasePencilProject.setupScript
             }

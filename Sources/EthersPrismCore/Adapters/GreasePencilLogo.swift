@@ -166,9 +166,10 @@ public struct GreasePencilLogoAdapter: DomainAdapter {
                          asset: mp4, assetExtension: "mp4")
     }
 
-    public static func editableTrace(_ state: WorkingState, project: URL, movie: URL) throws -> String {
+    public static func editableTrace(_ state: WorkingState, project: URL, movie: URL, multiShot: Bool = false) throws -> String {
         var settings = parameters(CompileInput(state: state, quality: .render))
         settings["project"] = project.path
+        settings["multi_shot"] = multiShot
         settings["out"] = movie.path
         let data = try JSONSerialization.data(withJSONObject: settings)
         let payload = data.base64EncodedString()
@@ -382,7 +383,10 @@ fps = 24
 seconds = 2.0 if preview else 3.0 + a['length'] * 9.0
 frames = max(2, int(round(seconds * fps)))
 step = 1 + int(round(a['timing'] * 2))            # on 1s, 2s or 3s
+multi_shot = a.get('multi_shot', False)
 draw_frames = max(4, int(frames * (0.9 - 0.6 * a['draw'])))
+if multi_shot:
+    draw_frames = min(draw_frames, frames // 3 - 2)
 base_r = (0.006 + 0.02 * a['weight'])
 wobble = (0.0015 + 0.012 * a['wobble']) * (1 - a['stability'])
 glow = a['glow']
@@ -587,6 +591,44 @@ if drift > 0.01:
     cam_data.ortho_scale = frame_scale
     cam_data.keyframe_insert('ortho_scale', frame=frames)
 
+if multi_shot:
+    # Animate the traced artwork and any packed photo together.
+    artwork = bpy.data.objects.new('Artwork Motion', None)
+    scene.collection.objects.link(artwork)
+    obj.parent = artwork
+    if a['photo'] > 0:
+        photo.parent = artwork
+    for frame, tilt, height in [(1, -1.2, 0), (frames // 3, 1.2, 0.035),
+                                (2 * frames // 3, -1, -0.025), (frames, 0.7, 0)]:
+        artwork.rotation_euler.y = math.radians(tilt)
+        artwork.location.z = height
+        artwork.keyframe_insert('rotation_euler', frame=frame)
+        artwork.keyframe_insert('location', frame=frame)
+
+    cuts = [1, frames // 3 + 1, 2 * frames // 3 + 1, frames + 1]
+    shots = [
+        ('Wide establish', 1.08, 0.95, 0, 0),
+        ('Upper close-up', 0.68, 0.59, 0, 0.28),
+        ('Pull back', 0.75, 1.06, 0.08, 0.12),
+    ]
+    for start, stop, shot in zip(cuts, cuts[1:], shots):
+        name, near, far, x, z = shot
+        lens = bpy.data.cameras.new(name)
+        lens.type = 'ORTHO'
+        camera = bpy.data.objects.new(name, lens)
+        scene.collection.objects.link(camera)
+        camera.rotation_euler = cam.rotation_euler
+        for f, zoom, offset in [(start, near, 0), (stop - 1, far, 0.05)]:
+            camera.location = (x + offset, -10, z - offset)
+            lens.ortho_scale = frame_scale * zoom
+            camera.keyframe_insert('location', frame=f)
+            lens.keyframe_insert('ortho_scale', frame=f)
+        marker = scene.timeline_markers.new(name, frame=start)
+        marker.camera = camera
+        if start == 1:
+            scene.camera = camera
+    bpy.data.objects.remove(cam, do_unlink=True)
+
 # ------------------------------------------------------- bloom (if allowed)
 if glow > 0.02 and use_bloom:
     try:
@@ -676,7 +718,7 @@ else:
     if a.get('project'):
         bpy.context.view_layer.objects.active = obj
         obj.select_set(True)
-        scene.frame_set(min(frames, draw_frames + step + 1))
+        scene.frame_set(1 if multi_shot else min(frames, draw_frames + step + 1))
         for screen in bpy.data.screens:
             for area in screen.areas:
                 if area.type == 'VIEW_3D':

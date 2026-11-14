@@ -80,6 +80,10 @@ struct GoalSection: View {
                     }
                     .disabled(model.creatingDrawing)
                     if GreasePencilLogoAdapter.imagePath(from: session.goal) != nil {
+                        Button("Multi-Shot Auto Trace") {
+                            model.openGreasePencilDrawing(automaticTrace: true, multiShot: true)
+                        }
+                        .disabled(model.creatingDrawing)
                         Button("Auto Trace in Blender") { model.openGreasePencilDrawing(automaticTrace: true) }
                             .disabled(model.creatingDrawing)
                     }
