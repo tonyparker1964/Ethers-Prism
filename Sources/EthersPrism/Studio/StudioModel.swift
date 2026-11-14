@@ -117,9 +117,16 @@ final class StudioModel: ObservableObject {
 
     // Color Studio
     enum GradingTab: String, CaseIterable, Identifiable {
-        case primaries, curves, hueCurves
+        case primaries, curves, hueCurves, matchLUT
         var id: String { rawValue }
-        var title: String { self == .primaries ? "Primaries" : self == .curves ? "Curves" : "Hue Curves" }
+        var title: String {
+            switch self {
+            case .primaries: return "Primaries"
+            case .curves: return "Curves"
+            case .hueCurves: return "Hue Curves"
+            case .matchLUT: return "Shot Match & LUT"
+            }
+        }
     }
     @Published var gradingTab: GradingTab = .primaries
     @Published var logWheels = false

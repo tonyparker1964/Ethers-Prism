@@ -17,7 +17,9 @@ struct RootView: View {
                 Rectangle().fill(PrismTheme.border).frame(width: 1)
             }
             page
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Never let a wide page push the PRISM sidebar off the window.
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
                 .id(studio.section == .create ? "create" : (studio.section.studioTab != nil ? "studio" : studio.section.rawValue))
                 .transition(.opacity)
         }

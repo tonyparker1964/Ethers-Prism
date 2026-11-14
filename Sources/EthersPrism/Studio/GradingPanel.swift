@@ -31,6 +31,7 @@ struct GradingPanel: View {
                     case .primaries: PrimariesView()
                     case .curves: CurvesView(kinds: CurveKind.custom, selection: $studio.curveKind)
                     case .hueCurves: CurvesView(kinds: CurveKind.hue, selection: $studio.hueCurveKind)
+                    case .matchLUT: ColorPanel(showWheels: false)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -39,7 +40,7 @@ struct GradingPanel: View {
             .prismPanel(padding: 0)
 
             ScopePanel()
-                .frame(width: 330)
+                .frame(width: 270)
                 .prismPanel(padding: 0)
         }
         .disabled(!studio.hasImage)
@@ -54,7 +55,7 @@ struct PrimariesView: View {
     var body: some View {
         VStack(spacing: 6) {
             // Top bar: Auto, Temp, Tint, Contrast, Pivot, Mid/Detail
-            HStack(spacing: 14) {
+            HStack(spacing: 10) {
                 Button { studio.autoBalance() } label: {
                     Text("A").font(.system(size: 12, weight: .bold))
                         .frame(width: 22, height: 22)
@@ -71,14 +72,14 @@ struct PrimariesView: View {
             .padding(.horizontal, 10)
 
             let wheels = studio.logWheels ? StudioColor.Wheel.log : StudioColor.Wheel.primary
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 ForEach(wheels) { w in PrimaryWheel(wheel: w) }
             }
             .padding(.horizontal, 10)
             .frame(maxHeight: .infinity)
 
             // Bottom bar: Color Boost, Shadows, Highlights, Saturation, Hue, Lum Mix
-            HStack(spacing: 14) {
+            HStack(spacing: 10) {
                 ParamField(id: "colorBoost", label: "Color Boost")
                 ParamField(id: "shadowsP", label: "Shadows")
                 ParamField(id: "highlightsP", label: "Highlights")
@@ -101,8 +102,8 @@ struct ParamField: View {
     var body: some View {
         let c = StudioControls.byID[id]!
         let changed = studio.edit[id] != c.neutral
-        HStack(spacing: 5) {
-            Text(label).font(.system(size: 11)).foregroundStyle(PrismTheme.secondaryText).fixedSize()
+        VStack(spacing: 1) {
+            Text(label).font(.system(size: 10)).foregroundStyle(PrismTheme.secondaryText).lineLimit(1).fixedSize()
             VStack(spacing: 1) {
                 TextField("", value: Binding(get: { studio.edit[id] }, set: { studio.edit[id] = min(max($0, c.range.lowerBound), c.range.upperBound); studio.commit(label) }),
                           format: .number.precision(.fractionLength(c.unit == "x" ? 3 : (c.unit == "n" ? 2 : 0))))
@@ -110,8 +111,8 @@ struct ParamField: View {
                     .font(.system(size: 11, weight: .medium).monospacedDigit())
                     .multilineTextAlignment(.center)
                     .foregroundStyle(changed ? PrismTheme.teal : PrismTheme.text)
-                    .frame(width: 52)
-                    .padding(.vertical, 2)
+                    .frame(width: 50)
+                    .padding(.vertical, 1)
                     .background(PrismTheme.background, in: RoundedRectangle(cornerRadius: 4))
                     .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(PrismTheme.border))
                 Slider(value: studio.binding(id), in: c.range) { editing in if !editing { studio.commit(label) } }
@@ -139,7 +140,7 @@ struct PrimaryWheel: View {
             }
             WheelDisc(wheel: wheel)
                 .frame(maxWidth: 150, maxHeight: 150)
-            HStack(spacing: 3) {
+            HStack(spacing: 2) {
                 number(n.y, .white) { studio.setWheelNumbers(wheel, y: $0) }
                 number(n.r, .red) { studio.setWheelNumbers(wheel, r: $0) }
                 number(n.g, .green) { studio.setWheelNumbers(wheel, g: $0) }
@@ -157,11 +158,11 @@ struct PrimaryWheel: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 10).monospacedDigit())
                 .multilineTextAlignment(.center)
-                .frame(width: 34)
+                .frame(width: 30)
                 .padding(.vertical, 1)
                 .background(PrismTheme.background, in: RoundedRectangle(cornerRadius: 3))
                 .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(PrismTheme.border))
-            Rectangle().fill(color).frame(width: 30, height: 2)
+            Rectangle().fill(color).frame(width: 26, height: 2)
         }
     }
 }

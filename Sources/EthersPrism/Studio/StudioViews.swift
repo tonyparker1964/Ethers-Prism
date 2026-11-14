@@ -32,7 +32,7 @@ struct StudioWorkspace: View {
                     }
                 }
             }
-            if !studio.focusMode {
+            if !studio.focusMode && studio.section != .color {
                 StudioInspector()
                     .frame(width: 300)
                     .transition(.move(edge: .trailing).combined(with: .opacity))

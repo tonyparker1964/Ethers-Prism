@@ -7,14 +7,25 @@ struct ColorPanel: View {
     @EnvironmentObject var studio: StudioModel
     @EnvironmentObject var auto: AutoImportController
     @State private var logWheels = false
+    /// Color Studio shows only Shot Match and LUT (its wheels are in Primaries).
+    var showWheels = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            matchSection
-            Divider()
-            wheelsSection
-            Divider()
-            lutSection
+        if showWheels {
+            VStack(alignment: .leading, spacing: 12) {
+                matchSection
+                Divider()
+                wheelsSection
+                Divider()
+                lutSection
+            }
+        } else {
+            HStack(alignment: .top, spacing: 24) {
+                matchSection.frame(maxWidth: 320, alignment: .leading)
+                lutSection.frame(maxWidth: 320, alignment: .leading)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
