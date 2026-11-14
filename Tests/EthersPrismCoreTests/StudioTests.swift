@@ -172,6 +172,79 @@ final class StudioTests: XCTestCase {
         XCTAssertEqual(pasted.crop, b.crop)
     }
 
+    func testCurvesPassThroughTheirPointsAndStayNeutralByDefault() {
+        XCTAssertEqual(StudioCurves.evaluate(.luma, [], at: 0.3), 0.3, accuracy: 1e-9)
+        XCTAssertEqual(StudioCurves.evaluate(.hueSat, [], at: 0.3), 0.5, accuracy: 1e-9)
+        let s = [CurvePoint(0.25, 0.15), CurvePoint(0.75, 0.85)]          // an S-curve
+        XCTAssertEqual(StudioCurves.evaluate(.luma, s, at: 0.25), 0.15, accuracy: 1e-6)
+        XCTAssertEqual(StudioCurves.evaluate(.luma, s, at: 0), 0, accuracy: 1e-6)
+        XCTAssertEqual(StudioCurves.evaluate(.luma, s, at: 1), 1, accuracy: 1e-6)
+        var prev = -1.0
+        for i in 0...20 {                                                   // monotone: no overshoot
+            let v = StudioCurves.evaluate(.luma, s, at: Double(i) / 20)
+            XCTAssertGreaterThanOrEqual(v, prev); prev = v
+        }
+        // Hue curves wrap: the value at 0 equals the value at 1.
+        let h = [CurvePoint(0.1, 0.8), CurvePoint(0.5, 0.3), CurvePoint(0.9, 0.6)]
+        XCTAssertEqual(StudioCurves.evaluate(.hueSat, h, at: 0), StudioCurves.evaluate(.hueSat, h, at: 1), accuracy: 1e-6)
+        let back = StudioCurves.fromHSV(StudioCurves.toHSV(SIMD3(0.8, 0.3, 0.1)))
+        XCTAssertEqual(back.x, 0.8, accuracy: 1e-6); XCTAssertEqual(back.z, 0.1, accuracy: 1e-6)
+    }
+
+    func testPrimariesAndCurvesChangeThePicture() {
+        let base = pixels(StudioRenderer.apply(sample(), StudioEdit()))
+        for c in StudioControls.primaries {
+            // Pivot works with Contrast, Lum Mix with the wheels' Y.
+            var ctx = StudioEdit()
+            if c.id == "pivot" { ctx["contrastP"] = 1.5 }
+            if c.id == "lumMix" { ctx[StudioColor.Wheel.gain.levelKey] = 60; ctx[StudioColor.Wheel.gain.xKey] = 0.5 }
+            var e = ctx
+            e[c.id] = c.neutral == c.range.upperBound ? c.range.lowerBound : c.range.upperBound
+            XCTAssertNotEqual(pixels(StudioRenderer.apply(sample(), e)), pixels(StudioRenderer.apply(sample(), ctx)),
+                              "\(c.id) had no effect")
+        }
+        for k in CurveKind.allCases {
+            var e = StudioEdit()
+            e.setCurve(k, k.isCustom ? [CurvePoint(0.5, 0.8)] : [CurvePoint(0.0, 0.9), CurvePoint(0.33, 0.9), CurvePoint(0.66, 0.9)])
+            XCTAssertNotEqual(pixels(StudioRenderer.apply(sample(), e)), base, "\(k) curve had no effect")
+        }
+        var e = StudioEdit(); e.setCurve(.red, [CurvePoint(0.5, 0.5)]); e.setCurve(.red, [])
+        XCTAssertNil(e.curves, "an emptied curve is removed")
+    }
+
+    func testWheelNumbersRoundTrip() {
+        var e = StudioEdit()
+        StudioColor.setNumbers(.gain, &e, r: 0.3, g: -0.1, b: -0.2)
+        let n = StudioColor.numbers(.gain, e)
+        XCTAssertEqual(n.r, 0.3, accuracy: 0.01); XCTAssertEqual(n.g, -0.1, accuracy: 0.01); XCTAssertEqual(n.b, -0.2, accuracy: 0.01)
+    }
+
+    func testAutoBalanceStretchesAndNeutralises() throws {
+        // A dim, blue-tinted picture.
+        let dim = sample().applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: 0.6, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0, y: 0.6, z: 0, w: 0),
+            "inputBVector": CIVector(x: 0, y: 0, z: 0.75, w: 0), "inputBiasVector": CIVector(x: 0.05, y: 0.05, z: 0.1, w: 0)])
+        let s = try XCTUnwrap(ScopeSample.make(dim))
+        var e = StudioEdit()
+        StudioColor.autoBalance(s, into: &e)
+        XCTAssertGreaterThan(e[StudioColor.Wheel.gain.levelKey], 0, "dim picture: Gain goes up")
+        let before = mean(dim), after = mean(StudioRenderer.apply(dim, e))
+        XCTAssertLessThan(abs(after.b - after.r), abs(before.b - before.r), "blue cast reduced")
+    }
+
+    func testScopesDraw() throws {
+        let s = try XCTUnwrap(ScopeSample.make(sample()))
+        for k in ScopeKind.allCases {
+            let img = try XCTUnwrap(StudioScopes.render(k, s), k.rawValue)
+            XCTAssertEqual(img.width == img.height, k.isSquare, k.rawValue)
+        }
+        let red = StudioScopes.vectorPosition(r: 1, g: 0, b: 0)
+        XCTAssertEqual(red.y, 0.5, accuracy: 0.01); XCTAssertLessThan(red.x, 0)
+        let white = try XCTUnwrap(StudioScopes.chromaticity(r: 1, g: 1, b: 1))
+        XCTAssertEqual(white.x, 0.3127, accuracy: 0.002); XCTAssertEqual(white.y, 0.329, accuracy: 0.002)
+        XCTAssertEqual(s.histogram()[3].reduce(0, +), s.width * s.height)
+    }
+
     func testExposureBrightensAndWarmthWarms() {
         var e = StudioEdit(); e["exposure"] = 1
         XCTAssertGreaterThan(mean(StudioRenderer.apply(sample(), e)).g, mean(sample()).g + 0.05)

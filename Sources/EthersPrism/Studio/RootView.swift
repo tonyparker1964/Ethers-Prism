@@ -45,7 +45,7 @@ struct RootView: View {
         case .library: PageFrame(title: "Library", subtitle: "Every imported, pasted and edited picture.") {
             ImportLibrarySheet(embedded: true)
         }
-        case .edit, .realism, .upscale: StudioWorkspace()
+        case .edit, .color, .realism, .upscale: StudioWorkspace()
         case .presets: PresetsPage()
         case .export: ExportPage()
         }

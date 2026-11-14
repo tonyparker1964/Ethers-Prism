@@ -21,6 +21,8 @@ public struct StudioControl: Identifiable, Hashable, Sendable {
         switch unit {
         case "EV": return String(format: "%+.2f EV", v)
         case "%": return "\(Int(v.rounded()))%"
+        case "x": return String(format: "%.3f", v)
+        case "n": return String(format: "%.2f", v)
         case "×": return v == v.rounded() ? "\(Int(v))×" : String(format: "%.1f×", v)
         default: return v == 0 ? "0" : String(format: "%+d", Int(v.rounded()))
         }
@@ -41,6 +43,15 @@ public struct StudioEdit: Codable, Equatable, Hashable, Sendable {
     public var lutPath: String?
     /// Color tab: the picture this one is matched to.
     public var matchReferenceName: String?
+    /// Color Studio curves, by `CurveKind` raw value.
+    public var curves: [String: [CurvePoint]]?
+
+    public func curve(_ k: CurveKind) -> [CurvePoint] { curves?[k.rawValue] ?? [] }
+    public mutating func setCurve(_ k: CurveKind, _ points: [CurvePoint]) {
+        var c = curves ?? [:]
+        c[k.rawValue] = points.isEmpty ? nil : points
+        curves = c.isEmpty ? nil : c
+    }
 
     public init(values: [String: Double] = [:], quarterTurns: Int = 0, crop: UnitRect? = nil, upscale: Int = 2) {
         self.values = values; self.quarterTurns = quarterTurns; self.crop = crop; self.upscale = upscale
@@ -49,7 +60,7 @@ public struct StudioEdit: Codable, Equatable, Hashable, Sendable {
     /// The look without crop and rotation, for presets and Paste Settings.
     public var lookOnly: StudioEdit {
         var e = StudioEdit(values: values, upscale: upscale)
-        e.lutPath = lutPath; e.matchReferenceName = matchReferenceName
+        e.lutPath = lutPath; e.matchReferenceName = matchReferenceName; e.curves = curves
         return e
     }
 
@@ -71,7 +82,7 @@ public struct StudioEdit: Codable, Equatable, Hashable, Sendable {
     public func isChanged(_ id: String) -> Bool { values[id] != nil }
 
     /// True when nothing (colour, realism, enhance, crop or rotation) differs from the original.
-    public var isIdentity: Bool { values.isEmpty && quarterTurns == 0 && crop == nil && lutPath == nil }
+    public var isIdentity: Bool { values.isEmpty && quarterTurns == 0 && crop == nil && lutPath == nil && curves == nil }
 
     /// The slider values only (for presets: crop and rotation belong to one picture).
     public var look: [String: Double] { values }
@@ -188,7 +199,22 @@ public enum StudioControls {
         }
     }
 
-    public static let all: [StudioControl] = adjust + color + realism + enhance
+    /// Color Studio's Primaries bar (after DaVinci Resolve's Color Wheels palette). "temperature" is shared
+    /// with Adjust → White Balance.
+    public static let primaries: [StudioControl] = [
+        StudioControl("tint", "Tint", -100...100),
+        StudioControl("contrastP", "Contrast", 0...2, neutral: 1, unit: "x"),
+        StudioControl("pivot", "Pivot", 0...1, neutral: 0.435, unit: "x"),
+        StudioControl("midDetail", "Mid/Detail", -100...100),
+        StudioControl("colorBoost", "Color Boost", -100...100),
+        StudioControl("shadowsP", "Shadows", -100...100),
+        StudioControl("highlightsP", "Highlights", -100...100),
+        StudioControl("saturationP", "Saturation", 0...100, neutral: 50, unit: "n"),
+        StudioControl("hue", "Hue", 0...100, neutral: 50, unit: "n"),
+        StudioControl("lumMix", "Lum Mix", 0...100, neutral: 100, unit: "n"),
+    ]
+
+    public static let all: [StudioControl] = adjust + color + primaries + realism + enhance
     public static let byID: [String: StudioControl] = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
 }
 

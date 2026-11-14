@@ -159,18 +159,25 @@ public enum StudioRenderer {
             img = img.applyingFilter("CIColorControls", parameters: [
                 kCIInputBrightnessKey: brightness, kCIInputContrastKey: contrast, kCIInputSaturationKey: saturation])
         }
-        if v("temperature") != 0 {
+        if v("temperature") != 0 || v("tint") != 0 {
             img = img.applyingFilter("CITemperatureAndTint", parameters: [
                 "inputNeutral": CIVector(x: 6500, y: 0),
-                "inputTargetNeutral": CIVector(x: 6500 - v("temperature") * 30, y: 0)])
+                "inputTargetNeutral": CIVector(x: 6500 - v("temperature") * 30, y: -v("tint") * 0.8)])
         }
         let vibrance = pct("vibrance") + photo * 0.12
         if vibrance != 0 {
             img = img.applyingFilter("CIVibrance", parameters: ["inputAmount": vibrance])
         }
 
-        // Color tab: wheels, Match to Reference and LUT in one 3D LUT pass.
+        // Color tab and Color Studio: wheels, primaries, curves, Match to Reference and LUT in one 3D LUT pass.
         img = StudioColor.apply(img, edit)
+        // Mid/Detail: midtone local contrast (+) or softening (−).
+        if v("midDetail") > 0 {
+            img = img.applyingFilter("CIUnsharpMask", parameters: [kCIInputRadiusKey: r(14), kCIInputIntensityKey: pct("midDetail") * 0.8])
+        } else if v("midDetail") < 0 {
+            let soft = img.applyingGaussianBlur(sigma: r(5))
+            img = img.applyingFilter("CIDissolveTransition", parameters: [kCIInputTargetImageKey: soft, kCIInputTimeKey: -pct("midDetail") * 0.8])
+        }
 
         // Detail at several sizes: local contrast (large), surface (medium), photorealism, microtexture (fine).
         func unsharp(_ radius: Double, _ intensity: Double) {

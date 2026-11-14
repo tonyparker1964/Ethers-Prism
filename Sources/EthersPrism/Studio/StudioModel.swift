@@ -6,7 +6,7 @@ import EthersPrismCore
 
 /// The sections of the PRISM sidebar.
 enum AppSection: String, CaseIterable, Identifiable {
-    case create, importPaste, autoImport, library, edit, realism, upscale, presets, export
+    case create, importPaste, autoImport, library, edit, color, realism, upscale, presets, export
     var id: String { rawValue }
 
     var title: String {
@@ -16,6 +16,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .autoImport: return "Auto-Import"
         case .library: return "Library"
         case .edit: return "Edit Studio"
+        case .color: return "Color Studio"
         case .realism: return "Realism Studio"
         case .upscale: return "Upscale Studio"
         case .presets: return "Presets"
@@ -30,6 +31,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .autoImport: return "arrow.down.circle"
         case .library: return "photo.on.rectangle.angled"
         case .edit: return "slider.horizontal.3"
+        case .color: return "paintpalette"
         case .realism: return "camera.aperture"
         case .upscale: return "arrow.up.left.and.arrow.down.right"
         case .presets: return "square.stack.3d.up"
@@ -41,6 +43,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     var studioTab: StudioTab? {
         switch self {
         case .edit: return .adjust
+        case .color: return .color
         case .realism: return .realism
         case .upscale: return .enhance
         default: return nil
@@ -71,6 +74,7 @@ final class StudioModel: ObservableObject {
         didSet {
             UserDefaults.standard.set(section.rawValue, forKey: "prismSection")
             if let t = section.studioTab, t != tab { withAnimation(PrismTheme.spring) { tab = t } }
+            if section == .color && oldValue != .color { scheduleRender(geometryChanged: false) }
         }
     }
     @Published var tab: StudioTab = .adjust
@@ -110,6 +114,21 @@ final class StudioModel: ObservableObject {
 
     // Presets
     @Published private(set) var presets: [StudioPreset] = []
+
+    // Color Studio
+    enum GradingTab: String, CaseIterable, Identifiable {
+        case primaries, curves, hueCurves
+        var id: String { rawValue }
+        var title: String { self == .primaries ? "Primaries" : self == .curves ? "Curves" : "Hue Curves" }
+    }
+    @Published var gradingTab: GradingTab = .primaries
+    @Published var logWheels = false
+    @Published var curveKind: CurveKind = .luma
+    @Published var hueCurveKind: CurveKind = .hueHue
+    @Published var scopeKind: ScopeKind = .parade { didSet { refreshScope() } }
+    @Published private(set) var scopeImage: CGImage?
+    @Published private(set) var histogram: [[Int]] = []
+    private var scopeSample: ScopeSample?
 
     // Export
     @Published var exportFormat: StudioFormat = .png
@@ -348,11 +367,12 @@ final class StudioModel: ObservableObject {
         let key = "\(item?.id ?? "")|\(e.quarterTurns)|\(String(describing: e.crop))"
         let haveSubject = subjectCache?.key == key
         let cachedSubject = haveSubject ? subjectCache?.mask : nil
+        let wantScopes = section == .color, scopeKind = self.scopeKind
         renderTask = Task { [weak self] in
             // A short pause groups quick slider moves into one render.
             try? await Task.sleep(nanoseconds: 16_000_000)
             guard !Task.isCancelled else { return }
-            let result = await Task.detached(priority: .userInitiated) { () -> (NSImage?, NSImage?, CGSize, CIImage?) in
+            let result = await Task.detached(priority: .userInitiated) { () -> (NSImage?, NSImage?, CGSize, CIImage?, ScopeSample?, CGImage?) in
                 let base = StudioRenderer.geometry(src, e)
                 // Apple Vision finds the subject once per crop/rotation (for Background Defocus and Depth).
                 let subject = needsSubject ? (haveSubject ? cachedSubject : StudioVision.subjectMask(for: base)) : nil
@@ -360,13 +380,21 @@ final class StudioModel: ObservableObject {
                 let size = StudioRenderer.pixelSize(source: full, edit: e, size: .original)
                 let a = (try? StudioRenderer.cgImage(out)).map { NSImage(cgImage: $0, size: size) }
                 let b = geometryChanged ? (try? StudioRenderer.cgImage(base)).map { NSImage(cgImage: $0, size: size) } : nil
-                return (a, b, size, subject)
+                // Scopes measure the graded picture (Color Studio only).
+                let sample = wantScopes ? ScopeSample.make(out) : nil
+                let scope = sample.flatMap { StudioScopes.render(scopeKind, $0) }
+                return (a, b, size, subject, sample, scope)
             }.value
             guard let self, !Task.isCancelled else { return }
             if needsSubject && !haveSubject { self.subjectCache = (key, result.3) }
             self.after = result.0
             if let b = result.1 { self.before = b }
             self.imageSize = result.2
+            if let sample = result.4 {
+                self.scopeSample = sample
+                self.scopeImage = result.5
+                self.histogram = sample.histogram()
+            }
             self.rendering = false
         }
     }
@@ -457,6 +485,7 @@ final class StudioModel: ObservableObject {
     func resetColor() {
         var e = edit
         for k in StudioColor.allKeys { e.values[k] = nil }
+        e.curves = nil
         e.lutPath = nil
         e.matchReferenceName = nil
         edit = e
@@ -466,6 +495,57 @@ final class StudioModel: ObservableObject {
     func setWheel(_ w: StudioColor.Wheel, x: Double, y: Double) {
         edit[w.xKey] = x
         edit[w.yKey] = y
+    }
+
+    // MARK: - Color Studio
+
+    private func refreshScope() {
+        guard let s = scopeSample else { return }
+        let kind = scopeKind
+        Task { [weak self] in
+            let img = await Task.detached(priority: .userInitiated) { StudioScopes.render(kind, s) }.value
+            self?.scopeImage = img
+        }
+    }
+
+    /// Resolve's "A": balances black, white and colour cast from the picture as it comes in.
+    func autoBalance() {
+        guard let src = previewSource, let s = ScopeSample.make(StudioRenderer.geometry(src, edit)) else { return }
+        var e = edit
+        StudioColor.autoBalance(s, into: &e)
+        edit = e
+        commit("Auto Balance")
+    }
+
+    func wheelNumbers(_ w: StudioColor.Wheel) -> (y: Double, r: Double, g: Double, b: Double) {
+        StudioColor.numbers(w, edit)
+    }
+
+    func setWheelNumbers(_ w: StudioColor.Wheel, y: Double? = nil, r: Double? = nil, g: Double? = nil, b: Double? = nil) {
+        var e = edit
+        let n = StudioColor.numbers(w, e)
+        if let y { e[w.levelKey] = min(max(y * 100, -100), 100) }
+        if r != nil || g != nil || b != nil {
+            StudioColor.setNumbers(w, &e, r: r ?? n.r, g: g ?? n.g, b: b ?? n.b)
+        }
+        edit = e
+        commit(w.label)
+    }
+
+    func resetWheel(_ w: StudioColor.Wheel) {
+        edit[w.xKey] = 0; edit[w.yKey] = 0; edit[w.levelKey] = 0
+        commit("Reset \(w.label)")
+    }
+
+    func setCurve(_ k: CurveKind, _ points: [CurvePoint]) {
+        var e = edit
+        e.setCurve(k, points)
+        edit = e
+    }
+
+    func resetCurve(_ k: CurveKind) {
+        setCurve(k, [])
+        commit("Reset \(k.label) Curve")
     }
 
     // MARK: - Copy / Paste Settings

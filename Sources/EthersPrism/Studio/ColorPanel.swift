@@ -22,7 +22,13 @@ struct ColorPanel: View {
 
     private var matchSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            PrismHeading(title: "Match to Reference")
+            HStack {
+                PrismHeading(title: "Shot Match")
+                Spacer()
+                Button("Auto Balance") { studio.autoBalance() }
+                    .buttonStyle(PrismToolButtonStyle())
+                    .help("Balance black, white and colour cast automatically")
+            }
             if let name = studio.edit.matchReferenceName {
                 HStack {
                     Image(systemName: "link").foregroundStyle(PrismTheme.teal)
@@ -33,7 +39,7 @@ struct ColorPanel: View {
                 let c = StudioControls.byID["matchStrength"]!
                 PrismSlider(control: c, value: studio.binding(c.id)) { studio.commit(c.label) }
             } else {
-                Text("Give this picture the colours of another, so a series looks like one set.")
+                Text("Match this picture's colour, contrast and brightness to another, so a series looks like one set.")
                     .font(.caption).foregroundStyle(PrismTheme.secondaryText)
             }
             Menu {

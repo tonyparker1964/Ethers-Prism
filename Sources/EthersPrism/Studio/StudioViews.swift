@@ -18,9 +18,18 @@ struct StudioWorkspace: View {
                 }
                 .prismPanel(padding: 0)
                 if !studio.focusMode {
-                    StudioStrip()
-                        .frame(height: 80)
+                    if studio.section == .color {
+                        // Color Studio: the grading panel sits under the thumbnails, like Resolve's Color page.
+                        VStack(spacing: 8) {
+                            StudioStrip().frame(height: 74)
+                            GradingPanel().frame(height: 300)
+                        }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else {
+                        StudioStrip()
+                            .frame(height: 80)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                 }
             }
             if !studio.focusMode {
@@ -476,7 +485,7 @@ struct StudioStrip: View {
                             .contextMenu {
                                 Button("Open") { studio.open(item) }
                                 Button("Paste Settings") { studio.pasteSettings(to: [item]) }.disabled(studio.copiedLook == nil)
-                                Button("Match Current Picture to This") { studio.matchTo(item) }
+                                Button("Shot Match to This Picture") { studio.matchTo(item) }
                                     .disabled(!studio.hasImage || studio.item?.id == item.id)
                             }
                     }

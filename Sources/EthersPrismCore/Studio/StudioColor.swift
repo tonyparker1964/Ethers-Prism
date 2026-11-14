@@ -38,7 +38,75 @@ public enum StudioColor {
     /// Every key the Color tab writes (for Reset Color).
     public static var allKeys: [String] {
         Wheel.allCases.flatMap { [$0.xKey, $0.yKey, $0.levelKey] } + ["matchStrength", "lutStrength"] + matchKeys
+            + StudioControls.primaries.map(\.id)
     }
+
+    /// Wheel numbers as DaVinci Resolve shows them: Y (master) and R, G, B (the colour push).
+    public static func numbers(_ w: Wheel, _ e: StudioEdit) -> (y: Double, r: Double, g: Double, b: Double) {
+        let t = tint(x: e[w.xKey], y: e[w.yKey])
+        return (e[w.levelKey] / 100, t.r, t.g, t.b)
+    }
+
+    /// Sets a wheel from typed R, G, B values: the shared part goes to Y, the rest becomes the wheel position.
+    public static func setNumbers(_ w: Wheel, _ e: inout StudioEdit, r: Double, g: Double, b: Double) {
+        let m = (r + g + b) / 3
+        var x = r - m, y = (g - b) / 3.0.squareRoot()
+        let mag = hypot(x, y)
+        if mag > 1 { x /= mag; y /= mag }
+        e[w.xKey] = x; e[w.yKey] = y
+        e[w.levelKey] = min(max(e[w.levelKey] + m * 100, -100), 100)
+    }
+
+    static func usesPrimaries(_ e: StudioEdit) -> Bool {
+        StudioControls.primaries.contains { $0.id != "midDetail" && $0.id != "tint" && e.isChanged($0.id) }
+    }
+
+    /// Contrast / Pivot, Shadows / Highlights, curves, Color Boost, Saturation, Hue (in that order).
+    static func primariesAndCurves(_ c0: SIMD3<Double>, _ e: StudioEdit) -> SIMD3<Double> {
+        var c = c0
+        let k = e["contrastP"], p = e["pivot"]
+        if k != 1 { c = (c - SIMD3(repeating: p)) * k + SIMD3(repeating: p) }
+        func luma(_ v: SIMD3<Double>) -> Double { 0.2126 * v.x + 0.7152 * v.y + 0.0722 * v.z }
+        func smooth(_ a: Double, _ b: Double, _ x: Double) -> Double {
+            let t = min(max((x - a) / (b - a), 0), 1); return t * t * (3 - 2 * t)
+        }
+        let sh = e["shadowsP"] / 100, hi = e["highlightsP"] / 100
+        if sh != 0 || hi != 0 {
+            let l = luma(c)
+            c = c + SIMD3(repeating: sh * 0.25 * (1 - smooth(0.0, 0.5, l)) + hi * 0.25 * smooth(0.5, 1.0, l))
+        }
+        // Custom curves: Y on luminance, then each channel.
+        let y = e.curve(.luma)
+        if !y.isEmpty {
+            let l = min(max(luma(c), 0), 1)
+            c = c + SIMD3(repeating: StudioCurves.evaluate(.luma, y, at: l) - l)
+        }
+        for (i, kind) in [(0, CurveKind.red), (1, .green), (2, .blue)] {
+            let pts = e.curve(kind)
+            if !pts.isEmpty { c[i] = StudioCurves.evaluate(kind, pts, at: min(max(c[i], 0), 1)) }
+        }
+        // Hue curves and saturation work in HSV.
+        let hh = e.curve(.hueHue), hs = e.curve(.hueSat), hl = e.curve(.hueLum), ls = e.curve(.lumSat)
+        let boost = e["colorBoost"] / 100, sat = e["saturationP"] / 50, hueShift = (e["hue"] - 50) / 100
+        if !hh.isEmpty || !hs.isEmpty || !hl.isEmpty || !ls.isEmpty || boost != 0 || sat != 1 || hueShift != 0 {
+            let l0 = min(max(luma(c), 0), 1)
+            var hsv = StudioCurves.toHSV(clamp(c))
+            let h0 = hsv.x, s0 = hsv.y
+            if !hh.isEmpty { hsv.x += (StudioCurves.evaluate(.hueHue, hh, at: h0) - 0.5) * 0.5 }
+            if !hs.isEmpty { hsv.y *= StudioCurves.evaluate(.hueSat, hs, at: h0) * 2 }
+            if !ls.isEmpty { hsv.y *= StudioCurves.evaluate(.lumSat, ls, at: l0) * 2 }
+            if !hl.isEmpty { hsv.z *= 1 + (StudioCurves.evaluate(.hueLum, hl, at: h0) - 0.5) * 1.2 * s0 }
+            // Color Boost lifts the least saturated colours most (like vibrance).
+            if boost != 0 { hsv.y = hsv.y + boost * hsv.y * (1 - hsv.y) * 1.5 }
+            hsv.y *= sat
+            hsv.x += hueShift
+            hsv.y = min(max(hsv.y, 0), 1)
+            c = StudioCurves.fromHSV(hsv)
+        }
+        return c
+    }
+
+    static func usesCurves(_ e: StudioEdit) -> Bool { e.curves != nil }
 
     static func usesWheels(_ e: StudioEdit) -> Bool {
         Wheel.allCases.contains { e[$0.xKey] != 0 || e[$0.yKey] != 0 || e[$0.levelKey] != 0 }
@@ -205,12 +273,18 @@ public enum StudioColor {
     /// The 3D LUT for this edit's Color tab, or nil when the Color tab is untouched.
     public static func cube(for e: StudioEdit) -> Data? {
         let wheelsOn = usesWheels(e)
+        let primOn = usesPrimaries(e) || usesCurves(e)
         let matchOn = hasMatch(e) && e["matchStrength"] > 0
         let lut = e.lutPath.flatMap { loadLUT(path: $0) }
         let lutK = lut == nil ? 0 : e["lutStrength"] / 100
-        guard wheelsOn || matchOn || lutK > 0 else { return nil }
+        guard wheelsOn || primOn || matchOn || lutK > 0 else { return nil }
 
         let keyValues = allKeys.map { "\($0)=\(e[$0])" }.joined(separator: ",") + "|\(e.lutPath ?? "")"
+            + "|\(String(describing: e.curves?.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value.map { "\($0.x),\($0.y)" })" }))"
+        // Lum Mix: 100 = the wheels' Y (master) moves change brightness only; 0 = per channel.
+        var levelsOnly = StudioEdit()
+        for w in Wheel.allCases { levelsOnly[w.levelKey] = e[w.levelKey] }
+        let lumMix = e["lumMix"] / 100
         lock.lock()
         if let d = cubeCache[keyValues] { lock.unlock(); return d }
         lock.unlock()
@@ -220,7 +294,18 @@ public enum StudioColor {
         var i = 0
         for b in 0..<n { for g in 0..<n { for r in 0..<n {
             var c = SIMD3(Double(r), Double(g), Double(b)) / Double(n - 1)
-            if wheelsOn { c = wheels(c, e) }
+            if wheelsOn {
+                let full = wheels(c, e)
+                if lumMix > 0 {
+                    let lv = wheels(c, levelsOnly) - c
+                    let ly = 0.2126 * lv.x + 0.7152 * lv.y + 0.0722 * lv.z
+                    // At 100 the Y moves are spread evenly (luminance); lower lets them act per channel.
+                    c = full - lv + (SIMD3(repeating: ly) * lumMix + lv * (1 - lumMix))
+                } else {
+                    c = full
+                }
+            }
+            if primOn { c = primariesAndCurves(c, e) }
             if matchOn { c = match(clamp(c), e) }
             if let lut, lutK > 0 { let l = lut.sample(clamp(c)); c = c + (l - c) * lutK }
             c = clamp(c)
