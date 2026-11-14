@@ -114,3 +114,17 @@ final class LookRecipeTests: XCTestCase {
         XCTAssertNil(TrueTrace.recipe(.anime, look: nil)["look_sample"])
     }
 }
+
+final class DetailSliderTests: XCTestCase {
+    func testDetailMovesColoursShapesAndLines() throws {
+        let low = TrueTrace.recipe(.anime, look: nil, detail: 0.2)
+        let mid = TrueTrace.recipe(.anime, look: nil, detail: 0.6)
+        let high = TrueTrace.recipe(.anime, look: nil, detail: 0.95)
+        let c = { (r: [String: Any]) in r["colors"] as? Int ?? 0 }
+        XCTAssertLessThan(c(low), c(mid)); XCTAssertLessThan(c(mid), c(high))
+        XCTAssertEqual(c(mid), TrueTrace.recipe(.anime)["colors"] as? Int, "60% leaves the look as designed")
+        XCTAssertGreaterThan(try XCTUnwrap(low["min_area"] as? Double), try XCTUnwrap(high["min_area"] as? Double))
+        XCTAssertGreaterThan(try XCTUnwrap(low["ink_threshold"] as? Double), try XCTUnwrap(high["ink_threshold"] as? Double))
+        XCTAssertTrue(JSONSerialization.isValidJSONObject(low))
+    }
+}

@@ -565,8 +565,10 @@ final class AppModel: ObservableObject {
         Task {
             defer { trueTracing = false }
             do {
+                // The Detail slider in Choose your look (percent; 60 leaves the look as designed).
+                let detail = (UserDefaults.standard.object(forKey: "traceDetail") as? Double ?? 60) / 100
                 let result = try await TrueTrace.run(image: URL(fileURLWithPath: path), family: family,
-                                                     look: look?.traceLook, folder: folder)
+                                                     look: look?.traceLook, detail: detail, folder: folder)
                 let movie = try store.saveAsset(Data(contentsOf: result.movie, options: .mappedIfSafe), ext: "mp4",
                                                 sessionID: session.id, name: UUID().uuidString)
                 let still = try store.saveAsset(Data(contentsOf: result.still), ext: "png",

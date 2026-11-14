@@ -104,8 +104,9 @@ public enum TrueTrace {
 
     /// A family's recipe, tuned for one look: its description sets the line style and shading,
     /// and its sample picture sets the colours (the traced palette is repainted to match it).
-    public static func recipe(_ family: Family, look: Look?) -> [String: Any] {
+    public static func recipe(_ family: Family, look: Look?, detail: Double = 0.6) -> [String: Any] {
         var r = recipe(family)
+        defer { applyDetail(&r, detail) }
         guard let look else { return r }
         let words = look.description.lowercased()
         // keep "colors" etc. as numbers we can do sums on
@@ -136,6 +137,24 @@ public enum TrueTrace {
             r["look_sample"] = ["path": path, "cols": look.cols, "rows": look.rows, "tile": look.tile, "name": look.name] as [String: Any]
         }
         return r
+    }
+
+    /// The Detail slider (0…1; 0.6 leaves the look as it is). Lower: fewer colours, bigger and smoother shapes,
+    /// fewer lines. Higher: more colours, smaller shapes kept, more lines.
+    static func applyDetail(_ r: inout [String: Any], _ detail: Double) {
+        let f = min(1, max(0, detail)) - 0.6
+        guard abs(f) > 0.001 else { return }
+        func num(_ k: String, _ fallback: Double) -> Double {
+            (r[k] as? Double) ?? (r[k] as? Int).map(Double.init) ?? fallback
+        }
+        r["colors"] = max(4, Int((num("colors", 12) * (1 + 0.9 * f)).rounded()))
+        r["min_area"] = num("min_area", 12) * pow(2, -4 * f)
+        r["simplify"] = max(0.3, num("simplify", 0.8) * (1 - 0.8 * f))
+        r["smooth_passes"] = max(1, Int((num("smooth_passes", 2) - 4 * f).rounded()))
+        r["majority_passes"] = max(1, Int((num("majority_passes", 1) - 3 * f).rounded()))
+        if detail < 0.35 { r["majority_radius"] = 2 }
+        r["ink_threshold"] = num("ink_threshold", 0.18) * max(0.4, 1 - 1.2 * f)
+        r["ink_min_area"] = num("ink_min_area", 30) * pow(2, -4 * f)
     }
 
     /// The trace settings for a family (keys are read by the Blender script).
@@ -193,7 +212,8 @@ public enum TrueTrace {
     }
 
     /// Traces `image` in Blender (background) and writes still, movie and project into `folder`.
-    public static func run(image: URL, family: Family, look: Look? = nil, folder: URL, size: Int = 1920, seconds: Double = 6) async throws -> Result {
+    public static func run(image: URL, family: Family, look: Look? = nil, detail: Double = 0.6, folder: URL,
+                           size: Int = 1920, seconds: Double = 6) async throws -> Result {
         let blender = BlenderStageAdapter.blenderPath
         guard FileManager.default.isExecutableFile(atPath: blender) else {
             throw PrismError.local("Blender wasn't found in /Applications. Install Blender to use True Trace.")
@@ -209,7 +229,7 @@ public enum TrueTrace {
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: scriptURL) }
 
-        let args: [String: Any] = ["image": image.path, "recipe": recipe(family, look: look), "still": still.path,
+        let args: [String: Any] = ["image": image.path, "recipe": recipe(family, look: look, detail: detail), "still": still.path,
                                    "movie": movieBase.path, "project": project.path, "size": size, "seconds": seconds]
         let (status, text) = try await runBlender(blender: blender, script: scriptURL, args: args, folder: folder)
         let files = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []

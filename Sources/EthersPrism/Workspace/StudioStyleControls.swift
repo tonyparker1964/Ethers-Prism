@@ -87,6 +87,7 @@ struct StudioStyleControls: View {
     @AppStorage("studioLookCollection") private var collection = "3D"
     @State private var styleID = ""
     @State private var copiedID = ""
+    @AppStorage("traceDetail") private var traceDetail = 60.0
 
     private var styles: [StudioStyle] { StudioStyle.styles(in: collection) }
     private var style: StudioStyle? { styles.first { $0.id == styleID } ?? styles.first }
@@ -145,6 +146,19 @@ struct StudioStyleControls: View {
     private func applyButton(_ style: StudioStyle) -> some View {
         let comfy = model.imageProviderKind == "comfyui"
         if model.adapter.id == "linelogo" || model.adapter.id == "model3d" {
+            if Sculpt3D.finish(look: style.name) == nil {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text("Detail")
+                        Slider(value: $traceDetail, in: 0...100, step: 5)
+                        Text("\(Int(traceDetail))%").monospacedDigit().frame(width: 40, alignment: .trailing)
+                    }
+                    .font(.callout)
+                    hint(traceDetail < 40 ? "Bold, simple shapes and few lines: the most stylised."
+                         : traceDetail > 75 ? "Rich detail and many lines: closest to your picture."
+                         : "Balanced. 60% is the look as designed.")
+                }
+            }
             let hasImage = model.current.flatMap { GreasePencilLogoAdapter.imagePath(from: $0.goal) } != nil
             let family = TrueTrace.family(look: style.name, collection: style.collection)
             let finish = Sculpt3D.finish(look: style.name)
