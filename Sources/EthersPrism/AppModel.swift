@@ -533,17 +533,68 @@ final class AppModel: ObservableObject {
     }
 
     /// Image without a reference: adds the Studio look to the goal (replacing any earlier look) and previews it.
+    @Published private(set) var trueTracing = false
+    @Published private(set) var lastTrueTraceFolder: URL?
+
+    /// True Trace: Grease Pencil redraws the chosen image in a look (or faithfully, with no look).
+    /// Records the drawing-on video and the finished still in History; the .blend stays in the run's folder.
+    func trueTrace(look: StudioStyle?) {
+        guard !trueTracing, let session = current, adapter.id == "linelogo" else { return }
+        guard let path = GreasePencilLogoAdapter.imagePath(from: session.goal) else {
+            alertMessage = "Choose an image first (Choose Image… under the goal)."
+            return
+        }
+        let family: TrueTrace.Family
+        if let look {
+            guard let f = TrueTrace.family(look: look.name, collection: look.collection) else {
+                alertMessage = "Grease Pencil can't draw \(look.name): it needs real 3D surfaces or a photograph. Pick a 2D look."
+                return
+            }
+            family = f
+        } else {
+            family = .faithful
+        }
+        let label = look?.name ?? "Faithful"
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "yyyy-MM-dd HHmmss"
+        let safe = label.components(separatedBy: CharacterSet(charactersIn: "/:\\?*\"<>|")).joined(separator: "-")
+        let folder = drawingProject(for: session.id).deletingLastPathComponent()
+            .appendingPathComponent("True Trace \(safe) \(df.string(from: Date()))")
+        trueTracing = true
+        Task {
+            defer { trueTracing = false }
+            do {
+                let result = try await TrueTrace.run(image: URL(fileURLWithPath: path), family: family, folder: folder)
+                let movie = try store.saveAsset(Data(contentsOf: result.movie, options: .mappedIfSafe), ext: "mp4",
+                                                sessionID: session.id, name: UUID().uuidString)
+                let still = try store.saveAsset(Data(contentsOf: result.still), ext: "png",
+                                                sessionID: session.id, name: UUID().uuidString)
+                updateSession(session.id) {
+                    _ = $0.record(Output(kind: .video, text: "\(label), drawing on. \(result.summary)", assetPath: movie,
+                                     provider: "Blender", model: "Grease Pencil · True Trace", agent: "True Trace"),
+                              origin: .render, state: session.workingState)
+                    _ = $0.record(Output(kind: .image, text: "\(label). \(result.summary) Blender file: \(result.project.path)",
+                                     assetPath: still, provider: "Blender", model: "Grease Pencil · True Trace", agent: "True Trace"),
+                              origin: .render, state: session.workingState)
+                }
+                lastTrueTraceFolder = folder
+            } catch {
+                alertMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func showLastTrueTrace() {
+        guard let folder = lastTrueTraceFolder else { return }
+        let project = folder.appendingPathComponent("True Trace.blend")
+        NSWorkspace.shared.activateFileViewerSelecting([FileManager.default.fileExists(atPath: project.path) ? project : folder])
+    }
+
     func useStudioLook(_ style: StudioStyle) {
         guard adapter.id == "image" else { return }
         update { $0.setGoal(style.goal(adding: $0.goal)) }
         generate(.preview, force: true)
-    }
-
-    /// Line Logo: opens a Studio Style session for the chosen image and restyles it with this look right away.
-    func restyleLineLogo(with style: StudioStyle) {
-        openStudioStyleSession()
-        guard adapter.id == "image", current?.imageReference != nil else { return }
-        applyStudioStyle(style)
     }
 
     func openInLineLogo(_ url: URL) {
@@ -559,7 +610,7 @@ final class AppModel: ObservableObject {
             sessions.insert(s, at: 0)
             selectedID = s.id
         } catch {
-            alertMessage = "Couldn't create the Line Logo session: \(error.localizedDescription)"
+            alertMessage = "Couldn't create the True Trace session: \(error.localizedDescription)"
         }
     }
 

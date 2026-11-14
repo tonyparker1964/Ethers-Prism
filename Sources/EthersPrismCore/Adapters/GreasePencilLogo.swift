@@ -6,7 +6,7 @@ import Foundation
 /// The goal is the path to the logo image; with none, the Ether Frequency emblem is used.
 public struct GreasePencilLogoAdapter: DomainAdapter {
     public let id = "linelogo"
-    public let name = "Line Logo (Grease Pencil)"
+    public let name = "True Trace (Grease Pencil)"
     public let symbol = "scribble.variable"
     public let status = AdapterStatus.ready
     public let capabilities = OutputCapabilities(kind: .video, editable: false, exportFormats: ["mp4"])
@@ -110,7 +110,7 @@ public struct GreasePencilLogoAdapter: DomainAdapter {
     private func run(_ request: CompiledRequest) async throws -> Generated {
         let blender = BlenderStageAdapter.blenderPath
         guard FileManager.default.isExecutableFile(atPath: blender) else {
-            throw PrismError.local("Blender wasn't found in /Applications. Install Blender to use Line Logo.")
+            throw PrismError.local("Blender wasn't found in /Applications. Install Blender to use True Trace.")
         }
         var params = Self.parameters(request.input)
         let image = params["image"] as? String ?? ""
@@ -162,7 +162,7 @@ public struct GreasePencilLogoAdapter: DomainAdapter {
         let summary = "\((image as NSString).lastPathComponent) drawn in Grease Pencil" + (lines.isEmpty ? "." : ": \(lines).")
         return Generated(output: Output(kind: .video, text: summary, provider: "Blender",
                                         model: request.input.quality == .preview ? "Grease Pencil preview · 2 s" : "Grease Pencil render · \(dimensions)",
-                                        agent: "Line Logo"),
+                                        agent: "True Trace"),
                          asset: mp4, assetExtension: "mp4")
     }
 

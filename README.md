@@ -6,7 +6,7 @@
 
 Describe a goal and Ethers Prism builds you an editor: dials with named ends, plus fixed requirements. Move the dials, watch previews change, sweep one dial across its range, branch through history, compare states, render the version you choose, and export it with an authorship log. Choosing and editing the dials is part of the authorship.
 
-Eight fields, all working and all local: **Text**, **Image**, **3D Stage (Blender)**, **3D from Image (Blender)**, **Animation (Blender)**, **Line Logo (Grease Pencil)**, **Blender Script (from Claude)** and **Beats (your samples)**.
+Eight fields, all working and all local: **Text**, **Image**, **3D Stage (Blender)**, **3D from Image (Blender)**, **Animation (Blender)**, **True Trace (Grease Pencil)**, **Blender Script (from Claude)** and **Beats (your samples)**.
 
 Retired fields (Video Storyboard, Music Sketch, Code, Research, Text to Video, Image to Video) are no longer offered for new work, but sessions made with them still open with their results. Text to Video and Image to Video are parked on the `ltx-mlx` branch until LTX runs on this Mac.
 
@@ -53,7 +53,16 @@ Text to Video and Image to Video (LTX) are hidden, along with Settings → Video
 
 Turns any picture into a 3D model, renders it, and saves the model as a GLB. **Relief** (Mode toward the left) raises the light parts and sinks the dark parts, like a carved plaque; **Extrude** (toward the right) pulls the picture's outline, or a logo's lines, out into a solid with bevelled edges. Pictures with a transparent background are cut out to their shape; on others the background colour is treated as empty. Dials: Mode, Depth, Bevel, Material (metal ↔ glass ↔ neon), Detail, Color (one tint ↔ the picture's colors), Light angle, Camera angle. Previews take a few seconds; Render Full Quality makes a 1080p picture and keeps the model in Documents → Ethers Prism Exports → 3D Models. **Open in 3D Stage** starts a 3D Stage session with the model.
 
-## Line Logo (Grease Pencil)
+## True Trace (Grease Pencil)
+
+Formerly Line Logo. Choose an image, then let Grease Pencil redraw it, with no image model involved. Blender traces the picture's colours and edges and rebuilds it from filled shapes and ink strokes.
+
+- **True Trace (faithful)** redraws the image as closely as it can, from hundreds of shapes.
+- **Choose your look → True Trace in This Look** redraws it in a Studio look: Anime and cartoon looks get cel shading and line art; Manga and ink looks black-and-white ink; Comic, Poster, Stained Glass and similar bold shapes with heavy outlines; Watercolor and painted looks soft shapes; plus Flat, Pixel, Neon, Blueprint and Chalk. Looks that need real 3D surfaces or photographs (Photorealistic, Claymation, CGI and the like) are dimmed: strokes can't make them.
+- Each run gives a **finished still** and a **video of it drawing itself on**, both in History, plus an editable **Blender file** (**Show Blender File**). The tracing engine lives in `Tools/true-trace` (see its README to tune a look).
+
+The field keeps all of Line Logo's tools:
+
 
 Blender traces a logo image into Grease Pencil lines that draw themselves on, as an MP4. Leave the goal empty to use the Ether Frequency emblem (`Examples/ether-frequency-emblem.png`), or press **Choose Logo…**. Lines keep the logo's own colors (or glow white), draw from the centre outward, boil slightly like hand-drawn animation, and can hold on 2s or 3s; glow lines and bloom make it neon. Dials: Draw speed, Line weight, Wobble, Timing, Glow, Detail, Ink, Camera push, Length. Previews are 2 seconds at 640×360 (360×640 in portrait). Full MP4 renders run 3–12 seconds. Set **Resolution** to 100 for 3840×2160, or raise **Framing** to 50 or higher for 2160×3840. The intermediate resolution stops are 1080p and 1440p. Use **Suggest Dials** to add controls to an existing session while keeping its settings.
 
@@ -109,11 +118,11 @@ Kontakt instruments store their samples in Native Instruments' locked formats (.
 
 ## Choose your look
 
-In **Image** and **Line Logo**, the **Choose your look** section has all 146 Ether Image Studio looks, in the Studio's six collections: Images, 3D, Anime, Donghua, World and Visions. Each collection is a tab showing its count, with a grid of sample thumbnails. Click a thumbnail to pick a look, then:
+In **Image** and **True Trace**, the **Choose your look** section has all 146 Ether Image Studio looks, in the Studio's six collections: Images, 3D, Anime, Donghua, World and Visions. Each collection is a tab showing its count, with a grid of sample thumbnails. Click a thumbnail to pick a look, then:
 
 - **Image with a reference image** (ComfyUI): **Apply Look to Reference** restyles the picture.
 - **Image without a reference:** **Use This Look** adds the look to your goal and makes a preview.
-- **Line Logo:** **Restyle Image with This Look** restyles the chosen image in a new Studio Style session; from the result, **Open in Line Logo** traces and animates it.
+- **True Trace:** **True Trace in This Look** has Grease Pencil redraw your image in that look (see True Trace above).
 
 ## Storage
 

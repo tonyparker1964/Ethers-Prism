@@ -186,7 +186,7 @@ struct ImageResultView: View {
             if showPrompt, let url = model.assetURL(output),
                GreasePencilLogoAdapter.imageExtensions.contains(url.pathExtension.lowercased()),
                FileManager.default.fileExists(atPath: url.path) {
-                Button("Open in Line Logo") { model.openInLineLogo(url) }
+                Button("Open in True Trace") { model.openInLineLogo(url) }
                 Button("Open in Blender for Drawing") { model.openGreasePencilDrawing(reference: url) }
                     .disabled(model.creatingDrawing)
             }

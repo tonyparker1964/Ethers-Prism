@@ -72,6 +72,19 @@ struct GoalSection: View {
                     StartImageRow()
                 }
                 if model.adapter.id == "linelogo", let session = model.current {
+                    if GreasePencilLogoAdapter.imagePath(from: session.goal) != nil {
+                        Button { model.trueTrace(look: nil) } label: {
+                            Label("True Trace (faithful)", systemImage: "scribble.variable")
+                        }
+                        .disabled(model.trueTracing)
+                        .help("Grease Pencil redraws the image as closely as it can. Pick a look below for Anime, Comic, Watercolor and more.")
+                        if model.trueTracing {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.small)
+                                Text("Grease Pencil is tracing in Blender…").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                     let hasProject = FileManager.default.fileExists(atPath: model.drawingProject(for: session.id).path)
                     Button(hasProject ? "Reopen Drawing in Blender" : "Open in Blender for Drawing") {
                         model.openGreasePencilDrawing()
@@ -114,7 +127,7 @@ struct GoalSection: View {
                         }
                     } else if model.adapter.id == "linelogo" {
                         Button { chooseFile(types: GreasePencilLogoAdapter.imageExtensions, keepDescription: false) } label: {
-                            Label("Choose Logo…", systemImage: "scribble.variable")
+                            Label("Choose Image…", systemImage: "photo")
                         }
                     } else if model.adapter.id == "animate" {
                         Button { chooseAnimationFile(song: true) } label: {

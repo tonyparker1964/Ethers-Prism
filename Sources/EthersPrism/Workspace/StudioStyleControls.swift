@@ -88,7 +88,9 @@ struct StudioStyleControls: View {
                 ScrollView {
                     LazyVGrid(columns: thumbColumns, spacing: 10) {
                         ForEach(styles) { s in
-                            LookTile(style: s, selected: s.id == style?.id) { styleID = s.id }
+                            LookTile(style: s, selected: s.id == style?.id,
+                                     dimmed: model.adapter.id == "linelogo"
+                                        && TrueTrace.family(look: s.name, collection: s.collection) == nil) { styleID = s.id }
                         }
                     }
                     .padding(3)
@@ -113,14 +115,25 @@ struct StudioStyleControls: View {
         let comfy = model.imageProviderKind == "comfyui"
         if model.adapter.id == "linelogo" {
             let hasImage = model.current.flatMap { GreasePencilLogoAdapter.imagePath(from: $0.goal) } != nil
-            Button { model.restyleLineLogo(with: style) } label: {
-                Label("Restyle Image with This Look", systemImage: "paintpalette")
+            let family = TrueTrace.family(look: style.name, collection: style.collection)
+            Button { model.trueTrace(look: style) } label: {
+                Label("True Trace in This Look", systemImage: "scribble.variable")
             }
-            .disabled(!hasImage || !comfy)
-            if !hasImage {
-                hint("Choose an image first, then restyle it with this look before tracing.")
-            } else if !comfy {
-                hint("Select ComfyUI on this Mac in Settings to restyle the image.")
+            .disabled(!hasImage || family == nil || model.trueTracing)
+            if model.trueTracing {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Grease Pencil is tracing in Blender…").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if let family {
+                hint("Drawn as \(family.title.lowercased()). You get a finished still, a video of it drawing on and an editable Blender file.")
+            } else {
+                hint("Grease Pencil can't make this look: it needs real 3D surfaces or a photograph. Pick a 2D look.")
+            }
+            if !hasImage { hint("Choose an image first.") }
+            if model.lastTrueTraceFolder != nil {
+                Button { model.showLastTrueTrace() } label: { Label("Show Blender File", systemImage: "folder") }
             }
         } else if model.current?.imageReference != nil {
             Button { model.applyStudioStyle(style) } label: {
@@ -171,6 +184,7 @@ private struct CollectionTab: View {
 private struct LookTile: View {
     let style: StudioStyle
     let selected: Bool
+    var dimmed = false
     let action: () -> Void
 
     var body: some View {
@@ -196,10 +210,11 @@ private struct LookTile: View {
                     .foregroundStyle(selected ? .primary : .secondary)
                     .frame(maxWidth: .infinity, minHeight: 26, alignment: .top)
             }
+            .opacity(dimmed ? 0.35 : 1)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("\(style.name): \(style.description)")
+        .help(dimmed ? "\(style.name): Grease Pencil can't make this 3D or photo look" : "\(style.name): \(style.description)")
         .accessibilityLabel(style.name)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
