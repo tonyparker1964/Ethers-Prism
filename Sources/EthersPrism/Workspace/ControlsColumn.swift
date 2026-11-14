@@ -80,6 +80,8 @@ struct GoalSection: View {
                     }
                     .disabled(model.creatingDrawing)
                     if GreasePencilLogoAdapter.imagePath(from: session.goal) != nil {
+                        Button("Photo Ultra HD 4K Reveal") { model.renderPhotoReveal4K() }
+                            .help("Apply the photo reveal preset and render a 4K MP4.")
                         Button("Multi-Shot Auto Trace") {
                             model.openGreasePencilDrawing(automaticTrace: true, multiShot: true)
                         }

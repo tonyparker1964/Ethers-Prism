@@ -22,7 +22,7 @@ public struct GreasePencilLogoAdapter: DomainAdapter {
         Self.standardDials
     }
 
-    private static var standardDials: [Dial] {
+    public static var standardDials: [Dial] {
         [Dial(name: "Draw speed", detail: "How quickly the lines draw themselves on.", lowPole: "slow reveal", highPole: "quick sketch", value: 50),
          Dial(name: "Line weight", detail: "Thickness of the lines.", lowPole: "fine pen", highPole: "bold marker", value: 30),
          Dial(name: "Wobble", detail: "How much the lines boil from frame to frame, like hand-drawn animation.", lowPole: "steady", highPole: "lively boil", value: 35),
