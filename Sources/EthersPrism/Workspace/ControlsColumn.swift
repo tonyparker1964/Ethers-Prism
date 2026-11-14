@@ -92,12 +92,16 @@ struct GoalSection: View {
                     }
                     Button("Create Walk Cycle…") { model.chooseWalkPoses() }
                         .disabled(model.creatingDrawing)
+                    if GreasePencilLogoAdapter.imagePath(from: session.goal) != nil {
+                        Button("Restyle Reference with Studio…") { model.openStudioStyleSession() }
+                    }
                     Button("Import Blender Animation…") { model.importGreasePencilAnimation() }
                     Text("Draw and animate in Blender. Use Render → Render Animation, then import the movie here.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 if model.adapter.id == "image" && model.imageProviderKind == "comfyui" {
                     ReferenceImageControls()
+                    StudioStyleControls()
                 }
                 HStack {
                     if model.adapter.id == "i2v" {

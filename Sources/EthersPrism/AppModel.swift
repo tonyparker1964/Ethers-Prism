@@ -504,6 +504,34 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func openStudioStyleSession() {
+        guard let goal = current?.goal, let path = GreasePencilLogoAdapter.imagePath(from: goal) else { return }
+        guard imageProviderKind == "comfyui" else {
+            alertMessage = "Select ComfyUI on this Mac in Settings → Images to restyle a reference."
+            return
+        }
+        var session = Session(title: "Studio Style", domainID: "image")
+        session.imageReference = ImageReference(path: path, denoise: 0.55)
+        do {
+            try store.save(session)
+            sessions.insert(session, at: 0)
+            selectedID = session.id
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    func applyStudioStyle(_ style: StudioStyle) {
+        guard adapter.id == "image", imageProviderKind == "comfyui", current?.imageReference != nil else { return }
+        update {
+            $0.setGoal(style.prompt)
+            // A stronger starting value gives the model room to change materials and texture.
+            let denoise = max($0.imageReference?.denoise ?? 0.55, 0.55)
+            $0.imageReference?.denoise = denoise
+        }
+        generate(.preview, force: true)
+    }
+
     func openInLineLogo(_ url: URL) {
         var s = Session(title: "Image variation animation", domainID: "linelogo")
         do {
