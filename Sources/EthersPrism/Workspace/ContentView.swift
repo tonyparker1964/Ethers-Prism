@@ -8,10 +8,12 @@ struct ContentView: View {
     @State private var search = ""
 
     var body: some View {
-        NavigationSplitView {
+        // The session list sits beside the PRISM sidebar as a plain column. (A NavigationSplitView here
+        // floated its own macOS sidebar over the PRISM sidebar.)
+        HStack(spacing: 0) {
             SessionSidebar(search: $search)
-                .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 320)
-        } detail: {
+                .frame(width: 230)
+            Rectangle().fill(PrismTheme.border).frame(width: 1)
             if let s = model.current {
                 HStack(spacing: 0) {
                     ControlsColumn()
@@ -129,43 +131,7 @@ struct SessionSidebar: View {
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .background(PrismTheme.sidebar)
-        .searchable(text: $search, placement: .sidebar, prompt: "Search sessions")
-        .safeAreaInset(edge: .top, spacing: 0) {
-            HStack(spacing: 10) {
-                AppLogo(size: 34)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Ether's Prism").font(.headline)
-                    Text("Build the instrument, then play it.").font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-            Button { auto.showLibrary = true } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: auto.enabled ? "square.and.arrow.down.on.square.fill" : "square.and.arrow.down.on.square")
-                        .foregroundStyle(auto.enabled ? Color.accentColor : .secondary)
-                    Text("ChatGPT Imports")
-                    Spacer()
-                    Text("\(auto.items.count)").font(.caption).foregroundStyle(.secondary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .help(auto.enabled ? auto.status : "Auto-Import is off (Settings → Auto-Import)")
-            HStack {
-                Text("Version \(AppVersion.number)").font(.caption2).foregroundStyle(.tertiary)
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            }
-        }
+        .searchable(text: $search, placement: .toolbar, prompt: "Search sessions")
         .toolbar {
             ToolbarItem {
                 Menu {
