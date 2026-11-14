@@ -58,6 +58,18 @@ struct StudioStyle: Decodable, Identifiable {
         "Restyle the reference as \(name). \(description). Preserve the subject identity, pose, silhouette, framing, and distinctive markings."
     }
 
+    /// A prompt to paste into an image tool (with the picture attached) that redraws the picture in this look,
+    /// keeping everything else. The result traces cleanly in True Trace.
+    var redrawPrompt: String {
+        """
+        Redraw the attached image in the \(name) style: \(description.trimmingCharacters(in: CharacterSet(charactersIn: ". ")))\
+        . Keep exactly the same characters, faces' identity, skin tones, pose, framing, outfit details, props and symbols \
+        (for example any ankhs or emblems) and the same aspect ratio. Change only the way it is drawn and coloured. \
+        Use clean, clearly separated shapes and confident outlines so the picture can be traced into line art. \
+        No text, captions or watermark.
+        """
+    }
+
     /// The goal with this look added on its own last line, replacing any look chosen before.
     func goal(adding to: String) -> String {
         var base = to.components(separatedBy: "\n\nLook: ").first ?? ""
@@ -74,6 +86,7 @@ struct StudioStyleControls: View {
     @EnvironmentObject var model: AppModel
     @AppStorage("studioLookCollection") private var collection = "3D"
     @State private var styleID = ""
+    @State private var copiedID = ""
 
     private var styles: [StudioStyle] { StudioStyle.styles(in: collection) }
     private var style: StudioStyle? { styles.first { $0.id == styleID } ?? styles.first }
@@ -107,6 +120,19 @@ struct StudioStyleControls: View {
                         Text(style.description).font(.caption).foregroundStyle(.secondary)
                     }
                     applyButton(style)
+                    if ["image", "model3d", "linelogo"].contains(model.adapter.id) {
+                        Button {
+                            model.copyText(style.redrawPrompt)
+                            copiedID = style.id
+                        } label: {
+                            Label(copiedID == style.id ? "Prompt Copied" : "Copy \(style.name) Prompt",
+                                  systemImage: copiedID == style.id ? "checkmark" : "doc.on.doc")
+                        }
+                        .help(style.redrawPrompt)
+                        hint(copiedID == style.id
+                             ? "Paste it into your image tool with your picture attached. Bring the result back with Choose Image…, then click True Trace (faithful)."
+                             : "For character looks (Anime, Donghua, World): have an image tool redraw your picture in this look, then let Grease Pencil trace and animate it.")
+                    }
                 }
             }
             .onChange(of: collection, initial: true) {
