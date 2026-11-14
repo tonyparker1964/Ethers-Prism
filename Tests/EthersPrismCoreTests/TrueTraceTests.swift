@@ -43,3 +43,29 @@ final class TrueTraceTests: XCTestCase {
                       "Run: python3 scripts/sync-true-trace.py")
     }
 }
+
+final class Sculpt3DTests: XCTestCase {
+    func testThreeDLooksMapToFinishes() {
+        XCTAssertEqual(Sculpt3D.finish(look: "Claymation"), .clay)
+        XCTAssertEqual(Sculpt3D.finish(look: "Architectural Clay Render"), .whiteClay)
+        XCTAssertEqual(Sculpt3D.finish(look: "Designer Vinyl Toy"), .vinyl)
+        XCTAssertEqual(Sculpt3D.finish(look: "Marble Statue"), .marble)
+        XCTAssertEqual(Sculpt3D.finish(look: "Glass and Crystal 3D"), .glass)
+        XCTAssertEqual(Sculpt3D.finish(look: "Photorealistic CGI"), .cgi)
+        XCTAssertEqual(Sculpt3D.finish(look: "Low-Poly 3D"), .lowPoly)
+        XCTAssertEqual(Sculpt3D.finish(look: "Donghua 3D Cultivation"), .cgi)
+    }
+
+    func testTwoDAndPhotoLooksAreNotSculpted() {
+        for look in ["Anime", "Watercolor Storybook", "Photorealistic", "Polaroid Instant", "Cel-Shaded 3D"] {
+            XCTAssertNil(Sculpt3D.finish(look: look), look)
+        }
+    }
+
+    func testEveryRecipeIsValidJSONForTheScript() {
+        for finish in Sculpt3D.Finish.allCases {
+            XCTAssertTrue(JSONSerialization.isValidJSONObject(Sculpt3D.recipe(finish)), finish.rawValue)
+        }
+        XCTAssertTrue(Sculpt3D.script.contains("def height_field("))
+    }
+}

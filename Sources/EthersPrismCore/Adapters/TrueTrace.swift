@@ -137,15 +137,30 @@ public enum TrueTrace {
 
         let args: [String: Any] = ["image": image.path, "recipe": recipe(family), "still": still.path,
                                    "movie": movieBase.path, "project": project.path, "size": size, "seconds": seconds]
-        let json = String(data: try JSONSerialization.data(withJSONObject: args), encoding: .utf8) ?? "{}"
+        let (status, text) = try await runBlender(blender: blender, script: scriptURL, args: args, folder: folder)
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        guard status == 0, FileManager.default.fileExists(atPath: still.path),
+              let movieName = files.first(where: { $0.lowercased().hasSuffix(".mp4") }) else {
+            let errors = text.components(separatedBy: .newlines).filter { $0.contains("Error") || $0.contains("rror:") }
+            throw PrismError.local("Blender didn't finish the True Trace. \((errors.isEmpty ? text : errors.joined(separator: " ")).suffix(400))")
+        }
+        let detail = text.components(separatedBy: .newlines).first { $0.hasPrefix("True Trace: ") }?
+            .replacingOccurrences(of: "True Trace: ", with: "") ?? ""
+        return Result(still: still, movie: folder.appendingPathComponent(movieName), project: project,
+                      summary: "\(family.title) in Grease Pencil" + (detail.isEmpty ? "." : ": \(detail)."))
+    }
 
+    /// Runs a Python script in Blender with no window; Blender's messages go to blender.log in `folder`.
+    /// Returns the exit status and the log.
+    static func runBlender(blender: String, script: URL, args: [String: Any], folder: URL) async throws -> (Int32, String) {
+        let json = String(data: try JSONSerialization.data(withJSONObject: args), encoding: .utf8) ?? "{}"
         let log = folder.appendingPathComponent("blender.log")
         FileManager.default.createFile(atPath: log.path, contents: nil)
         let handle = try FileHandle(forWritingTo: log)
         defer { try? handle.close() }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: blender)
-        process.arguments = ["-b", "--factory-startup", "--python-exit-code", "1", "--python", scriptURL.path, "--", json]
+        process.arguments = ["-b", "--factory-startup", "--python-exit-code", "1", "--python", script.path, "--", json]
         process.standardOutput = handle
         process.standardError = handle
         try await withTaskCancellationHandler {
@@ -157,17 +172,6 @@ public enum TrueTrace {
             process.terminate()
         }
         try Task.checkCancellation()
-
-        let text = (try? String(contentsOf: log, encoding: .utf8)) ?? ""
-        let files = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-        guard process.terminationStatus == 0, FileManager.default.fileExists(atPath: still.path),
-              let movieName = files.first(where: { $0.lowercased().hasSuffix(".mp4") }) else {
-            let errors = text.components(separatedBy: .newlines).filter { $0.contains("Error") || $0.contains("rror:") }
-            throw PrismError.local("Blender didn't finish the True Trace. \((errors.isEmpty ? text : errors.joined(separator: " ")).suffix(400))")
-        }
-        let detail = text.components(separatedBy: .newlines).first { $0.hasPrefix("True Trace: ") }?
-            .replacingOccurrences(of: "True Trace: ", with: "") ?? ""
-        return Result(still: still, movie: folder.appendingPathComponent(movieName), project: project,
-                      summary: "\(family.title) in Grease Pencil" + (detail.isEmpty ? "." : ": \(detail)."))
+        return (process.terminationStatus, (try? String(contentsOf: log, encoding: .utf8)) ?? "")
     }
 }

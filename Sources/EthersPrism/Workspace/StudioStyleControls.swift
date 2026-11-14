@@ -90,7 +90,8 @@ struct StudioStyleControls: View {
                         ForEach(styles) { s in
                             LookTile(style: s, selected: s.id == style?.id,
                                      dimmed: model.adapter.id == "linelogo"
-                                        && TrueTrace.family(look: s.name, collection: s.collection) == nil) { styleID = s.id }
+                                        && TrueTrace.family(look: s.name, collection: s.collection) == nil
+                                        && Sculpt3D.finish(look: s.name) == nil) { styleID = s.id }
                         }
                     }
                     .padding(3)
@@ -116,20 +117,29 @@ struct StudioStyleControls: View {
         if model.adapter.id == "linelogo" {
             let hasImage = model.current.flatMap { GreasePencilLogoAdapter.imagePath(from: $0.goal) } != nil
             let family = TrueTrace.family(look: style.name, collection: style.collection)
-            Button { model.trueTrace(look: style) } label: {
-                Label("True Trace in This Look", systemImage: "scribble.variable")
+            let finish = Sculpt3D.finish(look: style.name)
+            if let finish {
+                Button { model.sculpt3D(look: style) } label: {
+                    Label("Build This Look in 3D", systemImage: "cube")
+                }
+                .disabled(!hasImage || model.trueTracing)
+                hint("Blender sculpts your image into a rounded 3D model in \(finish.title.lowercased()), with studio lights. You get a still, a turntable video, a Blender file and a .glb model.")
+            } else {
+                Button { model.trueTrace(look: style) } label: {
+                    Label("True Trace in This Look", systemImage: "scribble.variable")
+                }
+                .disabled(!hasImage || family == nil || model.trueTracing)
+                if let family {
+                    hint("Grease Pencil draws it as \(family.title.lowercased()). You get a finished still, a video of it drawing on and an editable Blender file.")
+                } else {
+                    hint("Photo looks need a real camera or an image model: Blender can't make them from strokes or a sculpted model. Pick another look.")
+                }
             }
-            .disabled(!hasImage || family == nil || model.trueTracing)
             if model.trueTracing {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
-                    Text("Grease Pencil is tracing in Blender…").font(.caption).foregroundStyle(.secondary)
+                    Text("Blender is working…").font(.caption).foregroundStyle(.secondary)
                 }
-            }
-            if let family {
-                hint("Drawn as \(family.title.lowercased()). You get a finished still, a video of it drawing on and an editable Blender file.")
-            } else {
-                hint("Grease Pencil can't make this look: it needs real 3D surfaces or a photograph. Pick a 2D look.")
             }
             if !hasImage { hint("Choose an image first.") }
             if model.lastTrueTraceFolder != nil {
@@ -214,7 +224,7 @@ private struct LookTile: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(dimmed ? "\(style.name): Grease Pencil can't make this 3D or photo look" : "\(style.name): \(style.description)")
+        .help(dimmed ? "\(style.name): a photo look, which Blender can't make" : "\(style.name): \(style.description)")
         .accessibilityLabel(style.name)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }

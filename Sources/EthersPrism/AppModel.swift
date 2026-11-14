@@ -585,10 +585,54 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// The 3D looks: Blender sculpts the chosen image into a rounded model with the look's material,
+    /// records the still and the turntable in History, and keeps the .blend and .glb in the run's folder.
+    func sculpt3D(look: StudioStyle) {
+        guard !trueTracing, let session = current, adapter.id == "linelogo" else { return }
+        guard let path = GreasePencilLogoAdapter.imagePath(from: session.goal) else {
+            alertMessage = "Choose an image first (Choose Image… under the goal)."
+            return
+        }
+        guard let finish = Sculpt3D.finish(look: look.name) else {
+            alertMessage = "\(look.name) isn't a 3D look Blender can build."
+            return
+        }
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "yyyy-MM-dd HHmmss"
+        let safe = look.name.components(separatedBy: CharacterSet(charactersIn: "/:\\?*\"<>|")).joined(separator: "-")
+        let folder = drawingProject(for: session.id).deletingLastPathComponent()
+            .appendingPathComponent("3D \(safe) \(df.string(from: Date()))")
+        trueTracing = true
+        Task {
+            defer { trueTracing = false }
+            do {
+                let result = try await Sculpt3D.run(image: URL(fileURLWithPath: path), finish: finish, folder: folder)
+                let movie = try store.saveAsset(Data(contentsOf: result.movie, options: .mappedIfSafe), ext: "mp4",
+                                                sessionID: session.id, name: UUID().uuidString)
+                let still = try store.saveAsset(Data(contentsOf: result.still), ext: "png",
+                                                sessionID: session.id, name: UUID().uuidString)
+                let files = "Blender file: \(result.project.path)" + (result.model.map { ". Model: \($0.path)" } ?? "")
+                updateSession(session.id) {
+                    _ = $0.record(Output(kind: .video, text: "\(look.name), turntable. \(result.summary)", assetPath: movie,
+                                         provider: "Blender", model: "Blender 3D · \(finish.title)", agent: "Sculpt 3D"),
+                                  origin: .render, state: session.workingState)
+                    _ = $0.record(Output(kind: .image, text: "\(look.name). \(result.summary) \(files)", assetPath: still,
+                                         provider: "Blender", model: "Blender 3D · \(finish.title)", agent: "Sculpt 3D"),
+                                  origin: .render, state: session.workingState)
+                }
+                lastTrueTraceFolder = folder
+            } catch {
+                alertMessage = error.localizedDescription
+            }
+        }
+    }
+
     func showLastTrueTrace() {
         guard let folder = lastTrueTraceFolder else { return }
-        let project = folder.appendingPathComponent("True Trace.blend")
-        NSWorkspace.shared.activateFileViewerSelecting([FileManager.default.fileExists(atPath: project.path) ? project : folder])
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        let project = files.first { $0.hasSuffix(".blend") }.map { folder.appendingPathComponent($0) }
+        NSWorkspace.shared.activateFileViewerSelecting([project ?? folder])
     }
 
     func useStudioLook(_ style: StudioStyle) {
