@@ -144,10 +144,14 @@ public enum TrueTrace {
             let errors = text.components(separatedBy: .newlines).filter { $0.contains("Error") || $0.contains("rror:") }
             throw PrismError.local("Blender didn't finish the True Trace. \((errors.isEmpty ? text : errors.joined(separator: " ")).suffix(400))")
         }
-        let detail = text.components(separatedBy: .newlines).first { $0.hasPrefix("True Trace: ") }?
-            .replacingOccurrences(of: "True Trace: ", with: "") ?? ""
+        let lines = text.components(separatedBy: .newlines)
+        let detail = lines.first { $0.hasPrefix("True Trace: ") }?.replacingOccurrences(of: "True Trace: ", with: "") ?? ""
+        // What the colour check found, so a wrong-looking result can be traced back.
+        let check = lines.first { $0.hasPrefix("Calibration: ") }?.replacingOccurrences(of: "Calibration: ", with: "") ?? "not run"
+        let surfaces = lines.contains { $0.hasPrefix("Colour shapes: flat surfaces") }
         return Result(still: still, movie: folder.appendingPathComponent(movieName), project: project,
-                      summary: "\(family.title) in Grease Pencil" + (detail.isEmpty ? "." : ": \(detail)."))
+                      summary: "\(family.title) in Grease Pencil" + (detail.isEmpty ? "." : ": \(detail).")
+                        + (surfaces ? " Colour drawn as flat surfaces under the ink." : "") + " Colour check: \(check).")
     }
 
     /// Runs a Python script in Blender with no window; Blender's messages go to blender.log in `folder`.

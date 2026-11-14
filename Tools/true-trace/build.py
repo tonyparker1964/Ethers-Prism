@@ -30,6 +30,89 @@ print(f"True Trace: {len(res['fills'])} shapes, {len(res['lines'])} ink lines fr
 unit = 2.0 / max(w, h)                   # long side of the picture = 2 Blender units
 
 
+def attr(d, name, kind, domain):
+    at = d.attributes.get(name)
+    return at if at is not None else d.attributes.new(name, kind, domain)
+
+
+def srgb_to_linear(c):
+    c = np.asarray(c, dtype=np.float64)
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+
+gp_blocks = getattr(bpy.data, 'grease_pencils_v3', None) or bpy.data.grease_pencils
+
+
+def calibrate():
+    """Render a tiny test card: does Grease Pencil fill shapes here, and how does it read colours?
+    Returns {'fill': 'srgb' | 'linear' | 'none', 'ink': 'srgb' | 'linear'}."""
+    import os, tempfile
+    result = {'fill': 'srgb', 'ink': 'linear'}
+    made = []
+    try:
+        tgp = gp_blocks.new('Calibrate'); tob = bpy.data.objects.new('Calibrate', tgp)
+        scene.collection.objects.link(tob); made.append(tob)
+        fm = bpy.data.materials.new('Cal fill'); bpy.data.materials.create_gpencil_data(fm)
+        fm.grease_pencil.show_stroke = False; fm.grease_pencil.show_fill = True
+        fm.grease_pencil.fill_color = (0.5, 0.5, 0.5, 1.0)
+        im_ = bpy.data.materials.new('Cal ink'); bpy.data.materials.create_gpencil_data(im_)
+        im_.grease_pencil.color = (1, 1, 1, 1)
+        tgp.materials.append(fm); tgp.materials.append(im_)
+        lay = tgp.layers.new('Cal')
+        try: lay.use_lights = False
+        except Exception: pass
+        dd = lay.frames.new(1).drawing
+        dd.add_strokes([4, 2])
+        dd.attributes['position'].data.foreach_set('vector', [-0.9, 0, -0.9, -0.1, 0, -0.9, -0.1, 0, 0.9, -0.9, 0, 0.9,
+                                                              0.5, 0, -0.9, 0.5, 0, 0.9])
+        attr(dd, 'radius', 'FLOAT', 'POINT').data.foreach_set('value', [0.001] * 4 + [0.2, 0.2])
+        attr(dd, 'material_index', 'INT', 'CURVE').data.foreach_set('value', [0, 1])
+        attr(dd, 'cyclic', 'BOOLEAN', 'CURVE').data.foreach_set('value', [True, False])
+        attr(dd, 'vertex_color', 'FLOAT_COLOR', 'POINT').data.foreach_set('color', [0, 0, 0, 0] * 4 + [0.5, 0.5, 0.5, 1] * 2)
+        cd = bpy.data.cameras.new('Cal cam'); cd.type = 'ORTHO'; cd.ortho_scale = 2.0
+        co = bpy.data.objects.new('Cal cam', cd); scene.collection.objects.link(co); made.append(co)
+        co.location = (0, -10, 0); co.rotation_euler = (math.radians(90), 0, 0)
+        scene.camera = co
+        wd = bpy.data.worlds.new('Cal world'); scene.world = wd; wd.use_nodes = True
+        wd.node_tree.nodes['Background'].inputs['Color'].default_value = (0, 0, 0, 1)
+        set_engine()
+        scene.render.resolution_x = scene.render.resolution_y = 32
+        scene.render.resolution_percentage = 100
+        im = scene.render.image_settings
+        if hasattr(im, 'media_type'): im.media_type = 'IMAGE'
+        im.file_format = 'PNG'; im.color_mode = 'RGB'
+        path = os.path.join(tempfile.gettempdir(), f'prism-true-trace-cal-{os.getpid()}.png')
+        scene.render.filepath = path
+        bpy.ops.render.render(write_still=True)
+        out = bpy.data.images.load(path)
+        p = np.empty(32 * 32 * 4, dtype=np.float32); out.pixels.foreach_get(p)
+        p = p.reshape(32, 32, 4)
+        fill_v = float(p[16, 8, :3].mean()); ink_v = float(p[16, 24, :3].mean())
+        bpy.data.images.remove(out)
+        try: os.remove(path)
+        except Exception: pass
+        # 0.5 shown as 0.5 means display (sRGB) values; shown as ~0.74 means linear values
+        result['fill'] = 'none' if fill_v < 0.08 else ('srgb' if abs(fill_v - 0.5) < abs(fill_v - 0.735) else 'linear')
+        if ink_v >= 0.08:
+            result['ink'] = 'srgb' if abs(ink_v - 0.5) < abs(ink_v - 0.735) else 'linear'
+        print(f'Calibration: fill {fill_v:.3f} → {result["fill"]}, ink {ink_v:.3f} → {result["ink"]}', file=sys.stderr)
+    except Exception as e:
+        print('Calibration skipped:', e, file=sys.stderr)
+    for o in made:
+        bpy.data.objects.remove(o, do_unlink=True)
+    if a.get('calibration'):            # a manual override, for testing
+        result.update(a['calibration'])
+    return result
+
+
+def set_engine():
+    for engine in ('BLENDER_EEVEE_NEXT', 'BLENDER_EEVEE'):
+        try:
+            scene.render.engine = engine; return
+        except TypeError:
+            pass
+
+
 def world(x, y):
     return ((x - w / 2) * unit, (h / 2 - y) * unit)
 
@@ -41,8 +124,18 @@ def tint(col):
     return col
 
 
+cal = calibrate()
+
+
+def fill_rgb(c):
+    return [float(v) for v in (srgb_to_linear(c) if cal['fill'] == 'linear' else np.asarray(c))]
+
+
+def ink_rgb_(c):
+    return [float(v) for v in (srgb_to_linear(c) if cal['ink'] == 'linear' else np.asarray(c))]
+
+
 # ------------------------------------------------------------ grease pencil
-gp_blocks = getattr(bpy.data, 'grease_pencils_v3', None) or bpy.data.grease_pencils
 gp = gp_blocks.new('True Trace')
 obj = bpy.data.objects.new('True Trace', gp)
 scene.collection.objects.link(obj)
@@ -62,7 +155,7 @@ for j, col in enumerate(palette):
     g = m.grease_pencil
     g.show_stroke = False
     g.show_fill = True
-    g.fill_color = (col[0] * dim, col[1] * dim, col[2] * dim, 1.0)
+    g.fill_color = (*fill_rgb([col[0] * dim, col[1] * dim, col[2] * dim]), 1.0)
     gp.materials.append(m)
 ink_mat = bpy.data.materials.new('Ink')
 bpy.data.materials.create_gpencil_data(ink_mat)
@@ -71,25 +164,79 @@ gp.materials.append(ink_mat)
 ink_index = len(palette)
 
 
-def attr(d, name, kind, domain):
-    at = d.attributes.get(name)
-    return at if at is not None else d.attributes.new(name, kind, domain)
-
-
-# Colour: every traced shape, biggest first so details land on top
-d = fill_layer.frames.new(1).drawing
+# Colour: every traced shape, biggest first so details land on top. The colour appears in stages
+# (big shapes, then details) as Grease Pencil keyframes, so no layer fade is needed.
 fills = [f for f in res['fills'] if len(f['pts']) >= 3]
-d.add_strokes([len(f['pts']) for f in fills])
-pos = []
-for f in fills:
-    for x, y in f['pts']:
-        X, Z = world(x, y)
-        pos += [X, 0.0, Z]
-d.attributes['position'].data.foreach_set('vector', pos)
-n_pts = len(pos) // 3
-attr(d, 'radius', 'FLOAT', 'POINT').data.foreach_set('value', [0.0005] * n_pts)
-attr(d, 'material_index', 'INT', 'CURVE').data.foreach_set('value', [f['label'] for f in fills])
-attr(d, 'cyclic', 'BOOLEAN', 'CURVE').data.foreach_set('value', [True] * len(fills))
+fps = 24
+frames = int(fps * a.get('seconds', 6))
+ink_end = int(frames * 0.5)
+fill_start, fill_end = int(frames * 0.35), int(frames * 0.75)
+stages = 8
+cuts = [round(len(fills) * (i + 1) / stages) for i in range(stages)]
+stage_frames = [fill_start + round((fill_end - fill_start) * i / (stages - 1)) for i in range(stages)]
+
+
+def fill_drawing(d, subset):
+    d.add_strokes([len(f['pts']) for f in subset])
+    pos = []
+    for f in subset:
+        for x, y in f['pts']:
+            X, Z = world(x, y)
+            pos += [X, 0.0, Z]
+    d.attributes['position'].data.foreach_set('vector', pos)
+    attr(d, 'radius', 'FLOAT', 'POINT').data.foreach_set('value', [0.0005] * (len(pos) // 3))
+    attr(d, 'material_index', 'INT', 'CURVE').data.foreach_set('value', [f['label'] for f in subset])
+    attr(d, 'cyclic', 'BOOLEAN', 'CURVE').data.foreach_set('value', [True] * len(subset))
+
+
+if cal['fill'] != 'none':
+    fill_layer.frames.new(1)                       # empty until the colour starts
+    for fr, cut in zip(stage_frames, cuts):
+        if cut > 0:
+            fill_drawing(fill_layer.frames.new(fr).drawing, fills[:cut])
+else:
+    # This Blender didn't fill Grease Pencil shapes in the test: draw the same shapes as flat, unlit
+    # surfaces under the Grease Pencil ink, so the result is still in full colour.
+    print('Colour shapes: flat surfaces under the Grease Pencil ink', file=sys.stderr)
+    surf_mats = []
+    for j, col in enumerate(palette):
+        sm = bpy.data.materials.new(f'Surface {j + 1:02d}')
+        sm.use_nodes = True
+        nt_ = sm.node_tree
+        for nd in list(nt_.nodes):
+            if nd.type != 'OUTPUT_MATERIAL':
+                nt_.nodes.remove(nd)
+        em = nt_.nodes.new('ShaderNodeEmission')
+        em.inputs['Color'].default_value = (*[float(v) for v in srgb_to_linear([col[0] * dim, col[1] * dim, col[2] * dim])], 1)
+        nt_.links.new(em.outputs[0], nt_.nodes['Material Output'].inputs['Surface'])
+        surf_mats.append(sm)
+    start = 0
+    for si, (fr, cut) in enumerate(zip(stage_frames, cuts)):
+        chunk = fills[start:cut]
+        base_index = start
+        start = cut
+        if not chunk:
+            continue
+        verts, faces, mats = [], [], []
+        for k, f in enumerate(chunk):
+            depth = -0.0004 - (base_index + k) * 2e-6     # later (smaller) shapes sit in front
+            first = len(verts)
+            for x, y in f['pts']:
+                X, Z = world(x, y)
+                verts.append((X, depth, Z))
+            faces.append(list(range(first, len(verts))))
+            mats.append(f['label'])
+        me = bpy.data.meshes.new(f'Colour {si + 1}')
+        me.from_pydata(verts, [], faces)
+        for sm in surf_mats:
+            me.materials.append(sm)
+        me.polygons.foreach_set('material_index', mats)
+        ob = bpy.data.objects.new(f'Colour {si + 1}', me)
+        scene.collection.objects.link(ob)
+        for value, at in ((True, 1), (False, fr)):
+            ob.hide_render = ob.hide_viewport = value
+            ob.keyframe_insert('hide_render', frame=at)
+            ob.keyframe_insert('hide_viewport', frame=at)
 
 # Ink: the look's line art, or a light pencil sketch that guides the drawing-on
 final_ink = r.get('ink', 0) > 0
@@ -115,7 +262,8 @@ if lines:
             pos += [X, -0.001, Z]
             rad.append(ink_w * 0.5 * unit * (0.6 + 0.4 * k))
             opa.append(k if final_ink else sketch_opacity)
-            col += [c[0], c[1], c[2], 1.0]
+            c2 = ink_rgb_(c)
+            col += [c2[0], c2[1], c2[2], 1.0]
     d.attributes['position'].data.foreach_set('vector', pos)
     attr(d, 'radius', 'FLOAT', 'POINT').data.foreach_set('value', rad)
     attr(d, 'opacity', 'FLOAT', 'POINT').data.foreach_set('value', opa)
@@ -123,17 +271,6 @@ if lines:
     attr(d, 'material_index', 'INT', 'CURVE').data.foreach_set('value', [ink_index] * len(lines))
 
 # ------------------------------------------------------------ drawing-on animation
-fps = 24
-frames = int(fps * a.get('seconds', 6))
-ink_end = int(frames * 0.5)
-fill_start, fill_end = int(frames * 0.35), int(frames * 0.75)
-
-
-def setp(o, name, value):
-    try:
-        setattr(o, name, value); return True
-    except Exception:
-        return False
 
 
 build_ok = False
@@ -150,21 +287,9 @@ except Exception as e:
     print('Draw-on modifier skipped:', e, file=sys.stderr)
 
 
-def key_opacity(layer, frame, value):
-    layer.opacity = value
-    gp.keyframe_insert(f'layers["{layer.name}"].opacity', frame=frame)
-
-
-try:
-    key_opacity(fill_layer, 1, 0.0)
-    key_opacity(fill_layer, fill_start, 0.0)
-    key_opacity(fill_layer, fill_end, 1.0)
-    if not final_ink:                     # the pencil sketch fades once the colour is in
-        key_opacity(ink_layer, fill_end, 1.0)
-        key_opacity(ink_layer, min(frames, fill_end + fps), 0.0)
-except Exception as e:
-    print('Fade skipped:', e, file=sys.stderr)
-    fill_layer.opacity = 1.0
+if not final_ink and lines:
+    # the pencil sketch steps aside once the colour is in
+    ink_layer.frames.new(min(frames, fill_end + fps))
 
 # ------------------------------------------------------------ look effects
 if r.get('glow'):
@@ -185,7 +310,7 @@ if r.get('pixel'):
 world_ = bpy.data.worlds.new('Paper'); scene.world = world_
 world_.use_nodes = True
 bg = tint(tuple(r.get('bg', [0.02, 0.02, 0.03])))
-world_.node_tree.nodes['Background'].inputs['Color'].default_value = (*bg, 1)
+world_.node_tree.nodes['Background'].inputs['Color'].default_value = (*[float(v) for v in srgb_to_linear(bg)], 1)
 
 cam_data = bpy.data.cameras.new('Camera')
 cam_data.type = 'ORTHO'
@@ -204,11 +329,7 @@ if a.get('push', True):
 # ------------------------------------------------------------ render settings
 scene.frame_start, scene.frame_end = 1, frames
 scene.render.fps = fps
-for engine in ('BLENDER_EEVEE_NEXT', 'BLENDER_EEVEE'):
-    try:
-        scene.render.engine = engine; break
-    except TypeError:
-        pass
+set_engine()
 if hasattr(scene.eevee, 'taa_render_samples'):
     scene.eevee.taa_render_samples = 32
 for vt in ('Standard', 'sRGB'):
