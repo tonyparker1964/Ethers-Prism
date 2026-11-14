@@ -123,3 +123,30 @@ public struct Constraint: Codable, Identifiable, Hashable, Sendable {
 public extension String {
     var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
 }
+
+public enum DialCommands {
+    /// Validate the entire batch before returning the updated dial values.
+    public static func apply(_ text: String, to dials: [Dial]) throws -> [Dial] {
+        var updated = dials
+        var seen = Set<Int>()
+        for (offset, line) in text.components(separatedBy: .newlines).enumerated() {
+            guard !line.trimmed.isEmpty else { continue }
+            let fields = line.split(separator: "=", omittingEmptySubsequences: false)
+            let prefix = "Line \(offset + 1)"
+            guard fields.count == 2, !String(fields[0]).trimmed.isEmpty,
+                  let value = Double(String(fields[1]).trimmed), value.isFinite, (0...100).contains(value) else {
+                throw PrismError.local("\(prefix) must use Dial name = value, from 0 to 100.")
+            }
+            let name = String(fields[0]).trimmed
+            let matches = dials.indices.filter { dials[$0].name.trimmed.lowercased() == name.lowercased() }
+            guard let index = matches.first else {
+                throw PrismError.local("\(prefix) refers to an unknown dial named “\(name)”.")
+            }
+            guard matches.count == 1, seen.insert(index).inserted else {
+                throw PrismError.local("\(prefix) has a duplicate dial name “\(name)”.")
+            }
+            updated[index].value = value
+        }
+        return updated
+    }
+}

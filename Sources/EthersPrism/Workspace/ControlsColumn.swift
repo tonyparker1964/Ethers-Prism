@@ -215,11 +215,50 @@ struct StartImageRow: View {
 
 struct DialsSection: View {
     @EnvironmentObject var model: AppModel
+    @State private var commands = ""
+    @State private var commandStatus = ""
+    @State private var commandFailed = false
+
+    private func applyCommands() {
+        guard let session = model.current else { return }
+        do {
+            let updated = try DialCommands.apply(commands, to: session.dials)
+            let count = zip(session.dials, updated).filter { $0.0.value != $0.1.value }.count
+            if count > 0 {
+                model.updateSession(session.id) { $0.dials = updated }
+                model.dialsChanged()
+            }
+            commandFailed = false
+            commandStatus = count == 0 ? "The dials already have these values." : "Updated \(count) \(count == 1 ? "dial" : "dials")."
+        } catch {
+            commandFailed = true
+            commandStatus = error.localizedDescription
+        }
+    }
 
     var body: some View {
         Section("Dials") {
             Group {
                 let dials = model.current?.dials ?? []
+                DisclosureGroup("Paste Dial Commands") {
+                    Text("Paste one command per line using Dial name = value (0–100).")
+                        .font(.caption).foregroundStyle(.secondary)
+                    TextEditor(text: $commands)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 82, maxHeight: 120)
+                        .accessibilityLabel("Dial commands")
+                    Button("Apply Commands", action: applyCommands)
+                        .disabled(commands.trimmed.isEmpty || dials.isEmpty)
+                    if !commandStatus.isEmpty {
+                        Text(commandStatus)
+                            .font(.caption)
+                            .foregroundStyle(commandFailed ? Color.red : Color.secondary)
+                    }
+                }
+                .onChange(of: model.selectedID) { _ in
+                    commands = ""
+                    commandStatus = ""
+                }
                 if dials.isEmpty {
                     Text("Describe a goal and let the AI suggest dials, or add your own. Choosing the dials is part of the authorship.")
                         .font(.callout)

@@ -416,3 +416,23 @@ final class VersionTests: XCTestCase {
         XCTAssertEqual(dict["CFBundleVersion"] as? String, AppVersion.build)
     }
 }
+
+final class DialCommandTests: XCTestCase {
+    private let dials = [
+        Dial(name: "Resolution", lowPole: "720p", highPole: "4K", value: 0),
+        Dial(name: "Photo reveal", lowPole: "Ink", highPole: "Photo", value: 25)
+    ]
+
+    func testAppliesNamedValuesAndPreservesDialIdentity() throws {
+        let result = try DialCommands.apply(" resolution = 100\r\n\r\nPhoto reveal = 85.5", to: dials)
+        XCTAssertEqual(result.map(\.value), [100, 85.5])
+        XCTAssertEqual(result.map(\.id), dials.map(\.id))
+        XCTAssertEqual(try DialCommands.apply("Resolution = 50", to: dials)[1], dials[1])
+    }
+
+    func testRejectsInvalidBatches() {
+        for line in ["Unknown = 10", "Resolution = 101", "Photo reveal = nan", "Photo reveal 42"] {
+            XCTAssertThrowsError(try DialCommands.apply("Resolution = 100\n" + line, to: dials))
+        }
+    }
+}
