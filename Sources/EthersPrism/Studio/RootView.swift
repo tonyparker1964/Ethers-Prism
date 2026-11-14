@@ -84,7 +84,6 @@ struct PrismSidebar: View {
 
             ForEach(AppSection.allCases) { s in
                 row(s)
-                if s == .library || s == .upscale { Spacer().frame(height: 6) }
             }
             Spacer()
             Text("Version \(AppVersion.number)").font(.caption2).foregroundStyle(PrismTheme.secondaryText.opacity(0.7))

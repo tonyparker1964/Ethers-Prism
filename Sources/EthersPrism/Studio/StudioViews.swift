@@ -7,28 +7,29 @@ struct StudioWorkspace: View {
     @EnvironmentObject var studio: StudioModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            StudioToolbar()
-            HStack(spacing: 12) {
-                StudioCanvas()
-                    .prismPanel(padding: 0)
+        // Option C: the tools sit in the canvas panel's header, the thumbnails are centred under the canvas,
+        // and the inspector runs the full height on the right.
+        HStack(spacing: 12) {
+            VStack(spacing: 10) {
+                VStack(spacing: 0) {
+                    StudioToolbar()
+                    Rectangle().fill(PrismTheme.border).frame(height: 1)
+                    StudioCanvas()
+                }
+                .prismPanel(padding: 0)
                 if !studio.focusMode {
-                    StudioInspector()
-                        .frame(width: 300)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                    StudioStrip()
+                        .frame(height: 80)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .padding(.horizontal, 12)
             if !studio.focusMode {
-                StudioStrip()
-                    .frame(height: 92)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else {
-                Spacer().frame(height: 12)
+                StudioInspector()
+                    .frame(width: 300)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
+        .padding(12)
         .animation(PrismTheme.spring, value: studio.focusMode)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             loadURLs(providers) { studio.importAndOpen($0) }
@@ -427,9 +428,10 @@ struct StudioStrip: View {
     @EnvironmentObject var auto: AutoImportController
 
     var body: some View {
+        GeometryReader { geo in
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
-                LazyHStack(spacing: 10) {
+                HStack(spacing: 10) {
                     ForEach(auto.items) { item in
                         StripThumb(item: item, selected: studio.item?.id == item.id)
                             .id(item.id)
@@ -442,13 +444,14 @@ struct StudioStrip: View {
                     .help("Add images")
                 }
                 .padding(.horizontal, 6)
+                .frame(minWidth: geo.size.width, minHeight: geo.size.height)   // centred, like the reference
             }
             .scrollIndicators(.never)
             .onChange(of: studio.item?.id) { _, id in
                 if let id { withAnimation(PrismTheme.spring) { proxy.scrollTo(id, anchor: .center) } }
             }
         }
-        .prismPanel(padding: 8)
+        }
     }
 }
 

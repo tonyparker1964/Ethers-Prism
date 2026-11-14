@@ -164,6 +164,7 @@ final class StudioModel: ObservableObject {
             committed = proj.edit
             tool = .none
             zoom = nil; pan = .zero
+            divider = 0.5
             edit = proj.edit
             scheduleRender(geometryChanged: true)
             UserDefaults.standard.set(item.id, forKey: "studioLastImage")
