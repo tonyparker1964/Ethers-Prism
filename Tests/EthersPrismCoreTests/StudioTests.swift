@@ -28,7 +28,7 @@ final class StudioTests: XCTestCase {
         XCTAssertEqual(Set(StudioControls.all.map(\.id)).count, StudioControls.all.count)
         for c in StudioControls.all { XCTAssertTrue(c.range.contains(c.neutral), c.id) }
         XCTAssertEqual(StudioControls.adjust.count, 9)
-        XCTAssertEqual(StudioControls.realism.count, 10)
+        XCTAssertEqual(StudioControls.realism.count, 14)
     }
 
     func testNeutralEditChangesNothing() {
@@ -81,6 +81,95 @@ final class StudioTests: XCTestCase {
         XCTAssertNotEqual(pixels(StudioRenderer.upscale(sample(), factor: 2, e)), standard)
         e.upscaleMode = .standard
         XCTAssertNil(e.values["upscaleMode"])
+    }
+
+    func testColorWheelsChangeThePicture() {
+        let base = pixels(StudioRenderer.apply(sample(), StudioEdit()))
+        for w in StudioColor.Wheel.allCases {
+            var e = StudioEdit(); e[w.xKey] = 0.8
+            XCTAssertNotEqual(pixels(StudioRenderer.apply(sample(), e)), base, "\(w) colour had no effect")
+            e = StudioEdit(); e[w.levelKey] = 60
+            XCTAssertNotEqual(pixels(StudioRenderer.apply(sample(), e)), base, "\(w) level had no effect")
+        }
+        // Gain pushed toward red (angle 0) makes the picture redder.
+        var red = StudioEdit(); red["gainX"] = 1
+        let m = mean(StudioRenderer.apply(sample(), red)), m0 = mean(sample())
+        XCTAssertGreaterThan(m.r - m.b, m0.r - m0.b)
+    }
+
+    func testMatchToReferenceMovesColoursTowardTheReference() {
+        let warm = CIImage(color: CIColor(red: 0.85, green: 0.5, blue: 0.25)).cropped(to: CGRect(x: 0, y: 0, width: 64, height: 64))
+        var e = StudioEdit()
+        StudioColor.setMatch(&e, source: StudioColor.stats(of: sample()), reference: StudioColor.stats(of: warm), name: "warm.png")
+        XCTAssertTrue(StudioColor.hasMatch(e))
+        let out = mean(StudioRenderer.apply(sample(), e)), before = mean(sample())
+        XCTAssertGreaterThan(out.r - out.b, before.r - before.b + 0.1)
+        StudioColor.clearMatch(&e)
+        XCTAssertFalse(StudioColor.hasMatch(e))
+        XCTAssertNil(e.matchReferenceName)
+    }
+
+    func testCubeLUTParsingAndApplying() throws {
+        // A 2-point LUT that swaps red and blue.
+        let text = """
+        TITLE "swap"
+        # comment
+        LUT_3D_SIZE 2
+        0 0 0
+        0 0 1
+        0 1 0
+        0 1 1
+        1 0 0
+        1 0 1
+        1 1 0
+        1 1 1
+        """
+        let lut = try StudioColor.parseCube(text)
+        XCTAssertEqual(lut.size, 2)
+        let s = lut.sample(SIMD3(1, 0, 0))
+        XCTAssertEqual(s.z, 1, accuracy: 0.001); XCTAssertEqual(s.x, 0, accuracy: 0.001)
+        XCTAssertThrowsError(try StudioColor.parseCube("LUT_1D_SIZE 4\n0 0 0"))
+
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("swap-\(UUID().uuidString).cube")
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var e = StudioEdit(); e.lutPath = url.path
+        let out = mean(StudioRenderer.apply(sample(), e)), before = mean(sample())
+        XCTAssertGreaterThan(out.b - out.r, before.b - before.r + 0.05, "red and blue swapped")
+        e["lutStrength"] = 0
+        XCTAssertNil(StudioColor.cube(for: e), "0% strength switches the LUT off")
+    }
+
+    func testLabRoundTrip() {
+        for c in [SIMD3<Double>(0.2, 0.4, 0.6), SIMD3(0.9, 0.1, 0.05), SIMD3(0.5, 0.5, 0.5)] {
+            let back = StudioColor.fromLab(StudioColor.toLab(c))
+            XCTAssertEqual(back.x, c.x, accuracy: 0.005); XCTAssertEqual(back.z, c.z, accuracy: 0.005)
+        }
+    }
+
+    func testSmartReframeKeepsTheSubjectAndTheShape() {
+        let size = CGSize(width: 1600, height: 900)
+        let subject = UnitRect(x: 0.75, y: 0.3, width: 0.15, height: 0.4)      // right side
+        let c = StudioReframe.crop(size: size, aspect: 9.0 / 16, focus: subject)
+        XCTAssertEqual(c.width * 1600 / (c.height * 900), 9.0 / 16, accuracy: 0.01)
+        XCTAssertLessThanOrEqual(c.x, subject.x); XCTAssertGreaterThanOrEqual(c.x + c.width, subject.x + subject.width)
+        XCTAssertLessThanOrEqual(c.x + c.width, 1.0001)
+        let sq = StudioReframe.crop(size: size, aspect: 1, focus: nil)
+        XCTAssertEqual(sq.x, (1 - 900.0 / 1600) / 2, accuracy: 0.001, "no subject: centred")
+        XCTAssertEqual(StudioRenderer.pixelSize(source: size, edit: StudioEdit(), size: .original, reframe: .square),
+                       CGSize(width: 900, height: 900))
+        XCTAssertEqual(StudioRenderer.render(sample(), StudioEdit(), size: .original, reframe: .square).extent.size,
+                       CGSize(width: 100, height: 100))
+    }
+
+    func testPasteSettingsKeepsCropAndRotation() {
+        var a = StudioEdit(); a["contrast"] = 30; a.lutPath = "/x.cube"; a.quarterTurns = 1
+        let b = StudioEdit(quarterTurns: 2, crop: UnitRect(x: 0.1, y: 0.1, width: 0.5, height: 0.5))
+        let pasted = b.withLook(of: a)
+        XCTAssertEqual(pasted["contrast"], 30)
+        XCTAssertEqual(pasted.lutPath, "/x.cube")
+        XCTAssertEqual(pasted.quarterTurns, 2)
+        XCTAssertEqual(pasted.crop, b.crop)
     }
 
     func testExposureBrightensAndWarmthWarms() {

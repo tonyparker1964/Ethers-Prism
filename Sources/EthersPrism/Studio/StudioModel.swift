@@ -117,6 +117,12 @@ final class StudioModel: ObservableObject {
     @Published var customWidth = 2048
     @Published var quality = 0.92
     @Published var keepTransparency = true
+    @Published var exportReframe: StudioReframe = .original { didSet { if exportReframe != .original { findFocus() } } }
+    /// Where the subject is in the open picture (for Smart Reframe), unit coordinates.
+    @Published private(set) var focus: UnitRect?
+
+    /// Copy / Paste Settings.
+    @Published private(set) var copiedLook: StudioEdit?
 
     let autoImport: AutoImportController
     let store: StudioStore
@@ -127,6 +133,8 @@ final class StudioModel: ObservableObject {
     private var undoStack: [StudioEdit] = []
     private var redoStack: [StudioEdit] = []
     private var renderTask: Task<Void, Never>?
+    /// The subject mask for the preview, kept while the crop and rotation stay the same.
+    private var subjectCache: (key: String, mask: CIImage?)?
     private var jobTask: Task<Void, Never>?
 
     var canUndo: Bool { !undoStack.isEmpty }
@@ -165,6 +173,8 @@ final class StudioModel: ObservableObject {
             tool = .none
             zoom = nil; pan = .zero
             divider = 0.5
+            focus = nil
+            subjectCache = nil
             edit = proj.edit
             scheduleRender(geometryChanged: true)
             UserDefaults.standard.set(item.id, forKey: "studioLastImage")
@@ -257,6 +267,7 @@ final class StudioModel: ObservableObject {
     }
 
     func reset(_ tab: StudioTab) {
+        if tab == .color { resetColor(); return }
         for c in StudioControls.controls(for: tab) { edit[c.id] = c.neutral }
         commit("Reset \(tab.title)")
     }
@@ -333,19 +344,26 @@ final class StudioModel: ObservableObject {
         renderTask?.cancel()
         let e = edit, scale = previewScale, full = sourceSize
         rendering = true
+        let needsSubject = StudioRenderer.needsSubject(e)
+        let key = "\(item?.id ?? "")|\(e.quarterTurns)|\(String(describing: e.crop))"
+        let haveSubject = subjectCache?.key == key
+        let cachedSubject = haveSubject ? subjectCache?.mask : nil
         renderTask = Task { [weak self] in
             // A short pause groups quick slider moves into one render.
             try? await Task.sleep(nanoseconds: 16_000_000)
             guard !Task.isCancelled else { return }
-            let result = await Task.detached(priority: .userInitiated) { () -> (NSImage?, NSImage?, CGSize) in
+            let result = await Task.detached(priority: .userInitiated) { () -> (NSImage?, NSImage?, CGSize, CIImage?) in
                 let base = StudioRenderer.geometry(src, e)
-                let out = StudioRenderer.apply(base, e, scale: scale)
+                // Apple Vision finds the subject once per crop/rotation (for Background Defocus and Depth).
+                let subject = needsSubject ? (haveSubject ? cachedSubject : StudioVision.subjectMask(for: base)) : nil
+                let out = StudioRenderer.apply(base, e, scale: scale, subject: subject)
                 let size = StudioRenderer.pixelSize(source: full, edit: e, size: .original)
                 let a = (try? StudioRenderer.cgImage(out)).map { NSImage(cgImage: $0, size: size) }
                 let b = geometryChanged ? (try? StudioRenderer.cgImage(base)).map { NSImage(cgImage: $0, size: size) } : nil
-                return (a, b, size)
+                return (a, b, size, subject)
             }.value
             guard let self, !Task.isCancelled else { return }
+            if needsSubject && !haveSubject { self.subjectCache = (key, result.3) }
             self.after = result.0
             if let b = result.1 { self.before = b }
             self.imageSize = result.2
@@ -366,6 +384,141 @@ final class StudioModel: ObservableObject {
                 return (try? StudioRenderer.cgImage(out)).map { NSImage(cgImage: $0, size: size) }
             }.value
             self?.uncropped = img
+        }
+    }
+
+    // MARK: - Color tab
+
+    /// Match this picture's colours to a library picture.
+    func matchTo(_ reference: ImportedImage) {
+        guard let url = autoImport.fileURL(for: reference) else { return }
+        matchTo(url: url, name: reference.fileName)
+    }
+
+    func chooseMatchFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png, .jpeg, .heic, .tiff, .webP]
+        panel.message = "Choose a picture whose colours this one should match."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        matchTo(url: url, name: url.lastPathComponent)
+    }
+
+    private func matchTo(url: URL, name: String) {
+        guard let src = previewSource else { return }
+        do {
+            let ref = StudioRenderer.preview(of: try StudioRenderer.load(url), maxPixels: 512).image
+            let srcStats = StudioColor.stats(of: StudioRenderer.geometry(src, edit))
+            var e = edit
+            StudioColor.setMatch(&e, source: srcStats, reference: StudioColor.stats(of: ref), name: name)
+            edit = e
+            commit("Match to \(name)")
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    func clearMatch() {
+        var e = edit
+        StudioColor.clearMatch(&e)
+        edit = e
+        commit("Clear Match")
+    }
+
+    func loadLUT() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "cube") ?? .data]
+        panel.message = "Choose a 3D LUT (.cube)."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            _ = try StudioColor.parseCube(text, name: url.lastPathComponent)
+            // Keep a copy, so the look survives if the original file moves.
+            let folder = store.folder.appendingPathComponent("LUTs", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let dest = folder.appendingPathComponent(url.lastPathComponent)
+            if !FileManager.default.fileExists(atPath: dest.path) { try FileManager.default.copyItem(at: url, to: dest) }
+            var e = edit
+            e.lutPath = dest.path
+            edit = e
+            commit("LUT \(url.deletingPathExtension().lastPathComponent)")
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    func clearLUT() {
+        var e = edit
+        e.lutPath = nil
+        e["lutStrength"] = 100
+        edit = e
+        commit("Clear LUT")
+    }
+
+    func resetColor() {
+        var e = edit
+        for k in StudioColor.allKeys { e.values[k] = nil }
+        e.lutPath = nil
+        e.matchReferenceName = nil
+        edit = e
+        commit("Reset Color")
+    }
+
+    func setWheel(_ w: StudioColor.Wheel, x: Double, y: Double) {
+        edit[w.xKey] = x
+        edit[w.yKey] = y
+    }
+
+    // MARK: - Copy / Paste Settings
+
+    func copySettings() {
+        guard hasImage else { return }
+        copiedLook = edit.lookOnly
+        message = "Copied this picture's settings. Paste them in the Library or on another picture."
+    }
+
+    /// Pastes the copied look (not crop or rotation) onto library pictures. A Match to Reference is
+    /// re-measured for each picture so they all land on the reference's colours.
+    func pasteSettings(to items: [ImportedImage]) {
+        guard let look = copiedLook else { message = "Copy settings from a picture first (⌥⌘C)."; return }
+        var count = 0
+        for it in items {
+            guard let url = autoImport.fileURL(for: it) else { continue }
+            if it.id == item?.id {
+                var e = edit.withLook(of: look)
+                if StudioColor.hasMatch(e), let src = previewSource { remeasure(&e, StudioRenderer.geometry(src, e)) }
+                edit = e
+                commit("Paste Settings")
+            } else {
+                var p = store.load(it.id) ?? StudioProject(id: it.id, imagePath: url.path)
+                if p.history.isEmpty { p.history.append(StudioVersion(label: "Original", edit: StudioEdit())) }
+                var e = p.edit.withLook(of: look)
+                if StudioColor.hasMatch(e), let img = try? StudioRenderer.load(url) {
+                    remeasure(&e, StudioRenderer.geometry(StudioRenderer.preview(of: img, maxPixels: 512).image, e))
+                }
+                p.edit = e
+                p.record("Pasted Settings")
+                try? store.save(p)
+            }
+            count += 1
+        }
+        message = "Pasted settings onto \(count) picture\(count == 1 ? "" : "s")."
+    }
+
+    private func remeasure(_ e: inout StudioEdit, _ image: CIImage) {
+        let s = StudioColor.stats(of: image)
+        for i in 0..<6 { e.values["matchSrc\(i)"] = s[i] }
+    }
+
+    // MARK: - Smart Reframe
+
+    func findFocus() {
+        guard focus == nil, let src = previewSource else { return }
+        let e = edit
+        Task { [weak self] in
+            let f = await Task.detached(priority: .userInitiated) {
+                StudioVision.focus(for: StudioRenderer.geometry(src, e))
+            }.value
+            self?.focus = f ?? UnitRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
         }
     }
 
@@ -427,7 +580,7 @@ final class StudioModel: ObservableObject {
     }
 
     var exportPixelSize: CGSize {
-        StudioRenderer.pixelSize(source: sourceSize, edit: edit, size: exportStudioSize)
+        StudioRenderer.pixelSize(source: sourceSize, edit: edit, size: exportStudioSize, reframe: exportReframe)
     }
 
     /// Export… with the native save dialog.
@@ -436,20 +589,22 @@ final class StudioModel: ObservableObject {
         commit("Export")
         let panel = NSSavePanel()
         let stem = (item.fileName as NSString).deletingPathExtension
-        let suffix = exportSize == .original ? "" : " \(exportSize.label)"
+        let shape = exportReframe == .original ? "" : " \(exportReframe.label.replacingOccurrences(of: ":", with: "x"))"
+        let suffix = (exportSize == .original ? "" : " \(exportSize.label)") + shape
         panel.nameFieldStringValue = "\(stem) – PRISM\(suffix).\(exportFormat.ext)"
         panel.allowedContentTypes = [exportFormat.type]
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let e = edit, size = exportStudioSize, format = exportFormat, q = quality, alpha = keepTransparency
+        let reframe = exportReframe
         let px = exportPixelSize
         job = "Exporting \(format.label) \(Int(px.width))×\(Int(px.height))"
         progress = 0.2
         jobTask = Task { [weak self] in
             self?.progress = 0.4
             let ok: Result<Void, Error> = await Task.detached(priority: .userInitiated) {
-                Result { try StudioRenderer.write(StudioRenderer.render(src, e, size: size), to: url, format: format,
-                                                  quality: q, transparency: alpha) }
+                Result { try StudioRenderer.write(StudioRenderer.render(src, e, size: size, reframe: reframe), to: url,
+                                                  format: format, quality: q, transparency: alpha) }
             }.value
             guard let self, !Task.isCancelled else { return }
             switch ok {

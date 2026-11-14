@@ -37,9 +37,27 @@ public struct StudioEdit: Codable, Equatable, Hashable, Sendable {
     public var crop: UnitRect?
     /// Enhance tab: 1, 2 or 4.
     public var upscale: Int
+    /// Color tab: an imported .cube LUT (a copy kept in PRISM's Studio/LUTs folder).
+    public var lutPath: String?
+    /// Color tab: the picture this one is matched to.
+    public var matchReferenceName: String?
 
     public init(values: [String: Double] = [:], quarterTurns: Int = 0, crop: UnitRect? = nil, upscale: Int = 2) {
         self.values = values; self.quarterTurns = quarterTurns; self.crop = crop; self.upscale = upscale
+    }
+
+    /// The look without crop and rotation, for presets and Paste Settings.
+    public var lookOnly: StudioEdit {
+        var e = StudioEdit(values: values, upscale: upscale)
+        e.lutPath = lutPath; e.matchReferenceName = matchReferenceName
+        return e
+    }
+
+    /// This edit with another edit's look (keeps this picture's crop and rotation).
+    public func withLook(of other: StudioEdit) -> StudioEdit {
+        var e = other.lookOnly
+        e.quarterTurns = quarterTurns; e.crop = crop
+        return e
     }
 
     public subscript(_ id: String) -> Double {
@@ -53,7 +71,7 @@ public struct StudioEdit: Codable, Equatable, Hashable, Sendable {
     public func isChanged(_ id: String) -> Bool { values[id] != nil }
 
     /// True when nothing (colour, realism, enhance, crop or rotation) differs from the original.
-    public var isIdentity: Bool { values.isEmpty && quarterTurns == 0 && crop == nil }
+    public var isIdentity: Bool { values.isEmpty && quarterTurns == 0 && crop == nil && lutPath == nil }
 
     /// The slider values only (for presets: crop and rotation belong to one picture).
     public var look: [String: Double] { values }
@@ -105,11 +123,12 @@ extension StudioEdit {
 }
 
 public enum StudioTab: String, CaseIterable, Identifiable, Sendable {
-    case adjust, realism, enhance
+    case adjust, color, realism, enhance
     public var id: String { rawValue }
     public var title: String {
         switch self {
         case .adjust: return "Adjust"
+        case .color: return "Color"
         case .realism: return "Realism"
         case .enhance: return "Enhance"
         }
@@ -139,7 +158,18 @@ public enum StudioControls {
         StudioControl("shadowRecovery", "Shadow Recovery", 0...100, unit: "%"),
         StudioControl("edgeRefinement", "Edge Refinement", 0...100, unit: "%"),
         StudioControl("noiseReduction", "Noise Reduction", 0...100, unit: "%"),
+        // Subject-aware (Apple Vision finds the subject; without one, the centre counts as the subject).
+        StudioControl("defocus", "Background Defocus", 0...100, unit: "%"),
+        // Film look
+        StudioControl("halation", "Halation", 0...100, unit: "%"),
+        StudioControl("bloom", "Bloom", 0...100, unit: "%"),
+        StudioControl("grain", "Film Grain", 0...100, unit: "%"),
     ]
+    /// The Color tab's sliders (the wheels' positions are stored without a slider).
+    public static let color: [StudioControl] = [
+        StudioControl("matchStrength", "Match Strength", 0...100, neutral: 100, unit: "%"),
+        StudioControl("lutStrength", "LUT Strength", 0...100, neutral: 100, unit: "%"),
+    ] + StudioColor.Wheel.allCases.map { StudioControl($0.levelKey, $0.label, -100...100) }
     /// Applied when the picture is made bigger (Enhance to 4K, Upscale, export at 2×/4×/4K).
     public static let enhance: [StudioControl] = [
         StudioControl("upscaleFactor", "4K Upscale", 1...4, neutral: 2, unit: "×", step: 0.5),
@@ -152,12 +182,13 @@ public enum StudioControls {
     public static func controls(for tab: StudioTab) -> [StudioControl] {
         switch tab {
         case .adjust: return adjust
+        case .color: return color
         case .realism: return realism
         case .enhance: return enhance
         }
     }
 
-    public static let all: [StudioControl] = adjust + realism + enhance
+    public static let all: [StudioControl] = adjust + color + realism + enhance
     public static let byID: [String: StudioControl] = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
 }
 

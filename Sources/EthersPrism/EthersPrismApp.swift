@@ -66,6 +66,7 @@ struct EthersPrismApp: App {
             SettingsView()
                 .environmentObject(model)
                 .environmentObject(model.autoImport)
+                .environmentObject(model.studio)
                 .preferredColorScheme(.dark)
                 .tint(PrismTheme.teal)
         }

@@ -57,9 +57,6 @@ struct ContentView: View {
         .sheet(isPresented: $model.showSaveTemplate) {
             SaveTemplateSheet().environmentObject(model)
         }
-        .sheet(isPresented: $auto.showLibrary) {
-            ImportLibrarySheet().environmentObject(auto)
-        }
     }
 }
 

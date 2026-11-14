@@ -140,6 +140,10 @@ PRISM's window has a dark Creative Studio sidebar: **Create** (every field and s
 - **Enhance:** Local (Mac) engine; Detail Recovery, Noise Reduction, Edge Refinement and Texture Preservation for anything made larger; Upscale 2×, Upscale 4× and **Enhance to 4K** (long edge 3840) save a new version to the library. "AI (Optional)" stays off unless an AI engine is configured; nothing needs the OpenAI API.
 - Every slider is a real Core Image operation running on the Mac's GPU (Metal), previewed live in the background. Upscaling is Lanczos resampling plus detail recovery and edge refinement, not generative AI.
 - Undo / Redo (⌘Z / ⇧⌘Z), per-slider reset, Reset tab, Reset All, autosaved projects with a history menu, saved presets.
+- **Color:** Match to Reference (gives a picture the colours of another, so a series looks like one set), Lift / Gamma / Gain / Offset and Shadows / Midtones / Highlights colour wheels, and .cube LUT import with a strength slider. All three run as one 3D LUT pass.
+- **Realism extras:** Background Defocus and a subject-aware Depth Enhancement (Apple Vision finds the subject on the Mac), plus a Film Look: Halation, Bloom and Film Grain.
+- **Copy / Paste Settings** (⌥⌘C / ⌥⌘V): copy one picture's look and paste it onto others; in the Library choose Select…, pick pictures and Paste Settings. Crop and rotation stay with each picture; a Match to Reference is re-measured for each one.
+- **Smart Reframe** on the Export page: 9:16, 1:1, 4:5 or 16:9, centred on the subject Apple Vision finds.
 - **Export:** PNG, JPEG, TIFF, HEIC and WebP (where macOS can write it), at original, 2×, 4×, 3840×2160 or a custom width, with quality and transparency settings, through the normal Save dialog.
 
 ## PRISM Auto-Import (Settings → Auto-Import)
@@ -191,6 +195,7 @@ Sessions, history, sweep, compare, templates, storage and export work automatica
 
 The number lives in `Sources/EthersPrismCore/Core/AppVersion.swift` and `Support/Info.plist` (a test keeps them in step). The middle number goes up for new fields or features, the last for fixes. After an update, run `./install-app.sh` to refresh the copy in Applications.
 
+- **1.7.0** (Nov 14, 2026): Color tab (Match to Reference, colour wheels, LUTs), subject-aware Background Defocus and Depth, Film Look (halation, bloom, grain), Copy/Paste Settings, Smart Reframe, 4K Upscale slider. Ideas from the DaVinci Resolve 20 Editor's and Colorist guides.
 - **1.6.0** (Nov 14, 2026): Design Option C — Creative Studio: dark teal interface, PRISM sidebar, Edit / Realism / Upscale Studio image editor with before/after, crop, rotate, zoom, presets, history, local 4K enhancement and export. Create keeps every existing field.
 - **1.5.0** (Nov 14, 2026): PRISM Auto-Import: images saved from the ChatGPT app into a watched folder are copied into the PRISM library (`~/Pictures/PRISM/ChatGPT Imports`) with thumbnails, duplicate checks and optional notifications, ready to open in True Trace. Also True Trace, Choose your look, Sculpt 3D and the Detail slider.
 - **1.4.0** (Nov 11, 2026): Cleaner macOS look: sessions grouped by field with search, Preview and Render in the toolbar and at the bottom of the controls, grouped settings-style controls, History in a side inspector, results shown on a canvas. Blender Script errors show only the script's own lines.

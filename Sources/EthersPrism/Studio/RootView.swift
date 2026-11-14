@@ -246,6 +246,25 @@ struct PresetsPage: View {
 struct ExportPage: View {
     @EnvironmentObject var studio: StudioModel
 
+    /// Darkens what Smart Reframe leaves out.
+    @ViewBuilder private func reframeOverlay(_ size: CGSize) -> some View {
+        if let aspect = studio.exportReframe.aspect {
+            GeometryReader { geo in
+                let c = StudioReframe.crop(size: size, aspect: aspect, focus: studio.focus)
+                let rect = CGRect(x: c.x * geo.size.width, y: c.y * geo.size.height,
+                                  width: c.width * geo.size.width, height: c.height * geo.size.height)
+                ZStack(alignment: .topLeading) {
+                    Path { p in p.addRect(CGRect(origin: .zero, size: geo.size)); p.addRect(rect) }
+                        .fill(Color.black.opacity(0.6), style: FillStyle(eoFill: true))
+                    Rectangle().strokeBorder(PrismTheme.teal, lineWidth: 2)
+                        .frame(width: rect.width, height: rect.height)
+                        .offset(x: rect.minX, y: rect.minY)
+                        .shadow(color: PrismTheme.teal.opacity(0.6), radius: 6)
+                }
+            }
+        }
+    }
+
     var body: some View {
         PageFrame(title: "Export", subtitle: "High-quality output in PNG, JPEG, TIFF, HEIC or WebP.") {
             HStack(alignment: .top, spacing: 18) {
@@ -253,6 +272,14 @@ struct ExportPage: View {
                 Form {
                     Picker("Format", selection: $studio.exportFormat) {
                         ForEach(StudioFormat.writable) { Text($0.label).tag($0) }
+                    }
+                    Picker("Smart Reframe", selection: $studio.exportReframe) {
+                        ForEach(StudioReframe.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    if studio.exportReframe != .original {
+                        Text("Apple Vision finds the subject on this Mac and keeps it in the \(studio.exportReframe.label) frame.")
+                            .font(.caption).foregroundStyle(PrismTheme.secondaryText)
                     }
                     Picker("Size", selection: $studio.exportSize) {
                         ForEach(ExportSizeChoice.allCases) { Text($0.label).tag($0) }
@@ -300,8 +327,10 @@ struct ExportPage: View {
     @ViewBuilder private var preview: some View {
         if let img = studio.after {
             Image(nsImage: img).resizable().scaledToFit()
+                .overlay { reframeOverlay(img.size) }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .animation(PrismTheme.spring, value: studio.exportReframe)
         } else {
             VStack(spacing: 8) {
                 Image(systemName: "photo").font(.largeTitle).foregroundStyle(PrismTheme.secondaryText)

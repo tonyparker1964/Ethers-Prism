@@ -113,7 +113,11 @@ public enum StudioRenderer {
 
     /// Colour, tone and realism. `scale` is how much smaller than full size the image is (preview), so
     /// detail filters keep the same look at any size.
-    public static func apply(_ image: CIImage, _ edit: StudioEdit, scale: Double = 1) -> CIImage {
+    /// True when the edit uses the subject (Background Defocus or Depth Enhancement).
+    public static func needsSubject(_ edit: StudioEdit) -> Bool { edit["defocus"] > 0 || edit["depth"] > 0 }
+
+    /// `subject` is the subject mask (white = subject) from `StudioVision.subjectMask`; without one the centre is used.
+    public static func apply(_ image: CIImage, _ edit: StudioEdit, scale: Double = 1, subject: CIImage? = nil) -> CIImage {
         let extent = image.extent
         var img = image.clampedToExtent()
         let v = { (id: String) -> Double in edit[id] }
@@ -163,6 +167,9 @@ public enum StudioRenderer {
             img = img.applyingFilter("CIVibrance", parameters: ["inputAmount": vibrance])
         }
 
+        // Color tab: wheels, Match to Reference and LUT in one 3D LUT pass.
+        img = StudioColor.apply(img, edit)
+
         // Detail at several sizes: local contrast (large), surface (medium), photorealism, microtexture (fine).
         func unsharp(_ radius: Double, _ intensity: Double) {
             guard intensity > 0 else { return }
@@ -183,14 +190,60 @@ public enum StudioRenderer {
                 kCIInputSharpnessKey: pct("edgeRefinement") * 0.8, kCIInputRadiusKey: r(0.8)])
         }
 
+        // Film look: halation (warm glow bleeding from highlights) and bloom.
+        if v("halation") > 0 {
+            let glow = img
+                .applyingFilter("CIToneCurve", parameters: [
+                    "inputPoint0": CIVector(x: 0, y: 0), "inputPoint1": CIVector(x: 0.55, y: 0),
+                    "inputPoint2": CIVector(x: 0.75, y: 0.25), "inputPoint3": CIVector(x: 0.9, y: 0.7),
+                    "inputPoint4": CIVector(x: 1, y: 1)])
+                .applyingGaussianBlur(sigma: r(14))
+                .applyingFilter("CIColorMatrix", parameters: [
+                    "inputRVector": CIVector(x: 0.7 * pct("halation"), y: 0.2 * pct("halation"), z: 0, w: 0),
+                    "inputGVector": CIVector(x: 0.18 * pct("halation"), y: 0.06 * pct("halation"), z: 0, w: 0),
+                    "inputBVector": CIVector(x: 0.04 * pct("halation"), y: 0, z: 0, w: 0),
+                    "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1)])
+            img = glow.applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: img])
+        }
+        if v("bloom") > 0 {
+            img = img.applyingFilter("CIBloom", parameters: [kCIInputRadiusKey: r(12), kCIInputIntensityKey: pct("bloom") * 0.9])
+        }
+
         img = img.cropped(to: extent)
-        // Depth: a soft falloff toward the edges draws the eye to the subject.
-        if v("depth") > 0 {
-            let diag = hypot(extent.width, extent.height)
-            img = img.applyingFilter("CIVignetteEffect", parameters: [
-                kCIInputCenterKey: CIVector(x: extent.midX, y: extent.midY),
-                kCIInputRadiusKey: diag * 0.42, kCIInputIntensityKey: pct("depth") * 0.7, "inputFalloff": 0.6])
+
+        // Subject-aware: the background is graded and blurred apart from the subject.
+        if v("depth") > 0 || v("defocus") > 0 {
+            let mask = (subject ?? StudioVision.centreMask(for: extent)).cropped(to: extent)
+            var background = img
+            if v("depth") > 0 {
+                background = background.applyingFilter("CIColorControls", parameters: [
+                    kCIInputBrightnessKey: -0.06 * pct("depth"), kCIInputSaturationKey: 1 - 0.3 * pct("depth"),
+                    kCIInputContrastKey: 1 - 0.12 * pct("depth")])
+            }
+            if v("defocus") > 0 {
+                background = background.clampedToExtent()
+                    .applyingFilter("CIMaskedVariableBlur", parameters: [
+                        "inputMask": mask.applyingFilter("CIColorInvert").clampedToExtent(),
+                        kCIInputRadiusKey: r(24) * pct("defocus")])
+                    .cropped(to: extent)
+            }
+            img = img.applyingFilter("CIBlendWithMask", parameters: [
+                kCIInputBackgroundImageKey: background, kCIInputMaskImageKey: mask]).cropped(to: extent)
+        }
+
+        // Grain last, so it sits on top like film.
+        if v("grain") > 0 {
+            let amount = pct("grain") * 0.35
+            let noise = CIFilter(name: "CIRandomGenerator")!.outputImage!
+                .transformed(by: CGAffineTransform(scaleX: max(scale * 1.6, 0.6), y: max(scale * 1.6, 0.6)))
+                .applyingFilter("CIColorMatrix", parameters: [
+                    "inputRVector": CIVector(x: amount, y: 0, z: 0, w: 0),
+                    "inputGVector": CIVector(x: amount, y: 0, z: 0, w: 0),
+                    "inputBVector": CIVector(x: amount, y: 0, z: 0, w: 0),
+                    "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+                    "inputBiasVector": CIVector(x: 0.5 - amount / 2, y: 0.5 - amount / 2, z: 0.5 - amount / 2, w: 0)])
                 .cropped(to: extent)
+            img = noise.applyingFilter("CISoftLightBlendMode", parameters: [kCIInputBackgroundImageKey: img]).cropped(to: extent)
         }
         return img
     }
@@ -228,9 +281,16 @@ public enum StudioRenderer {
         return img.cropped(to: big)
     }
 
-    /// The finished picture at a size: geometry → adjust/realism → enhance.
-    public static func render(_ source: CIImage, _ edit: StudioEdit, size: StudioSize) -> CIImage {
-        let base = apply(geometry(source, edit), edit)
+    /// The finished picture at a size: geometry → adjust/color/realism → Smart Reframe → enhance.
+    public static func render(_ source: CIImage, _ edit: StudioEdit, size: StudioSize,
+                              reframe: StudioReframe = .original) -> CIImage {
+        let geo = geometry(source, edit)
+        let subject = needsSubject(edit) ? StudioVision.subjectMask(for: geo) : nil
+        var base = apply(geo, edit, subject: subject)
+        if let aspect = reframe.aspect {
+            let c = StudioReframe.crop(size: base.extent.size, aspect: aspect, focus: StudioVision.focus(for: geo))
+            base = geometry(base, StudioEdit(crop: c))
+        }
         let w = base.extent.width, h = base.extent.height
         switch size {
         case .original:
@@ -252,10 +312,15 @@ public enum StudioRenderer {
     }
 
     /// Output pixel size for a size choice without rendering.
-    public static func pixelSize(source: CGSize, edit: StudioEdit, size: StudioSize) -> CGSize {
+    public static func pixelSize(source: CGSize, edit: StudioEdit, size: StudioSize,
+                                 reframe: StudioReframe = .original) -> CGSize {
         var w = source.width, h = source.height
         if ((edit.quarterTurns % 4) + 4) % 2 == 1 { swap(&w, &h) }
         if let c = edit.crop?.clamped { w = (w * c.width).rounded(); h = (h * c.height).rounded() }
+        if let a = reframe.aspect {
+            let c = StudioReframe.crop(size: CGSize(width: w, height: h), aspect: a, focus: nil)
+            w = (w * c.width).rounded(); h = (h * c.height).rounded()
+        }
         switch size {
         case .original: return CGSize(width: w, height: h)
         case .scale(let f): return CGSize(width: (w * f).rounded(), height: (h * f).rounded())

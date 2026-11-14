@@ -6,6 +6,7 @@ import EthersPrismCore
 /// Settings → Auto-Import.
 struct AutoImportSettingsTab: View {
     @EnvironmentObject var auto: AutoImportController
+    @EnvironmentObject var studio: StudioModel
 
     var body: some View {
         Form {
@@ -48,7 +49,7 @@ struct AutoImportSettingsTab: View {
                     Text(auto.libraryFolder.path).font(.caption).textSelection(.enabled)
                 }
                 HStack {
-                    Button("Show Library") { auto.showLibrary = true }
+                    Button("Show Library") { studio.section = .library }
                     Button("Show in Finder") { auto.showInFinder() }
                 }
                 Text("PNG, JPEG, HEIC, TIFF and WebP. Each picture is copied byte-for-byte; the original stays where you saved it. The same picture saved twice is imported once.")
@@ -64,7 +65,10 @@ struct ImportLibrarySheet: View {
     @EnvironmentObject var auto: AutoImportController
     /// Shown as the Library page rather than a sheet.
     var embedded = false
+    @EnvironmentObject var studio: StudioModel
     @State private var dropping = false
+    @State private var selecting = false
+    @State private var selected: Set<String> = []
 
     private let columns = [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 12)]
 
@@ -76,8 +80,22 @@ struct ImportLibrarySheet: View {
                     Text(auto.status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
-                Button("Add Images…") { addImages() }
-                Button("Show in Finder") { auto.showInFinder() }
+                if selecting {
+                    Text("\(selected.count) selected").font(.caption).foregroundStyle(.secondary)
+                    Button("Select All") { selected = Set(auto.items.map(\.id)) }
+                    Button("Paste Settings to \(selected.count)") {
+                        studio.pasteSettings(to: auto.items.filter { selected.contains($0.id) })
+                        selecting = false; selected = []
+                    }
+                    .disabled(selected.isEmpty || studio.copiedLook == nil)
+                    .help(studio.copiedLook == nil ? "Copy settings from a picture in Edit Studio first (⌥⌘C)." : "Paste the copied look onto the selected pictures.")
+                    Button("Done") { selecting = false; selected = [] }
+                } else {
+                    Button("Select…") { selecting = true }
+                        .help("Select pictures to paste settings onto")
+                    Button("Add Images…") { addImages() }
+                    Button("Show in Finder") { auto.showInFinder() }
+                }
                 if !embedded {
                     Button("Done") { auto.showLibrary = false }.keyboardShortcut(.defaultAction)
                 }
@@ -98,6 +116,20 @@ struct ImportLibrarySheet: View {
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(auto.items) { item in
                             ImportTile(item: item)
+                                .overlay(alignment: .topTrailing) {
+                                    if selecting {
+                                        Image(systemName: selected.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                                            .font(.title2).foregroundStyle(selected.contains(item.id) ? PrismTheme.teal : .white)
+                                            .shadow(radius: 3).padding(6)
+                                    }
+                                }
+                                .overlay {
+                                    if selecting {
+                                        Color.clear.contentShape(Rectangle()).onTapGesture {
+                                            if selected.contains(item.id) { selected.remove(item.id) } else { selected.insert(item.id) }
+                                        }
+                                    }
+                                }
                         }
                     }
                     .padding()
@@ -133,6 +165,7 @@ struct ImportLibrarySheet: View {
 
 struct ImportTile: View {
     @EnvironmentObject var auto: AutoImportController
+    @EnvironmentObject var studio: StudioModel
     let item: ImportedImage
 
     var body: some View {
@@ -157,6 +190,8 @@ struct ImportTile: View {
             ForEach(AutoImportController.OpenTarget.allCases) { t in
                 Button("Open in \(t.label)") { auto.open(item, in: t) }
             }
+            Divider()
+            Button("Paste Settings") { studio.pasteSettings(to: [item]) }.disabled(studio.copiedLook == nil)
             Divider()
             Button("Show in Finder") { auto.showInFinder(item) }
             Button("Remove from Library", role: .destructive) { auto.remove(item) }

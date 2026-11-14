@@ -98,6 +98,11 @@ struct StudioToolbar: View {
                 Button { studio.redo() } label: { Image(systemName: "arrow.uturn.forward") }
                     .keyboardShortcut("z", modifiers: [.command, .shift]).disabled(!studio.canRedo).help("Redo (⇧⌘Z)")
                 historyMenu
+                Button { studio.copySettings() } label: { Image(systemName: "doc.on.doc") }
+                    .keyboardShortcut("c", modifiers: [.command, .option]).help("Copy Settings (⌥⌘C)")
+                Button { if let it = studio.item { studio.pasteSettings(to: [it]) } } label: { Image(systemName: "doc.on.clipboard.fill") }
+                    .keyboardShortcut("v", modifiers: [.command, .option]).disabled(studio.copiedLook == nil)
+                    .help("Paste Settings (⌥⌘V)")
                 Divider().frame(height: 18)
                 Button { zoomBy(1 / 1.25) } label: { Image(systemName: "minus.magnifyingglass") }
                     .keyboardShortcut("-", modifiers: .command).help("Zoom out (⌘−)")
@@ -339,7 +344,8 @@ struct StudioInspector: View {
                 VStack(alignment: .leading, spacing: 8) {
                     switch studio.tab {
                     case .adjust: sliders(.adjust)
-                    case .realism: sliders(.realism)
+                    case .color: ColorPanel()
+                    case .realism: realismPanel
                     case .enhance: enhancePanel
                     }
                 }
@@ -365,6 +371,25 @@ struct StudioInspector: View {
         VStack(alignment: .leading, spacing: 4) {
             PrismHeading(title: tab == .adjust ? "Image Adjustments" : "Realism Studio")
             ForEach(StudioControls.controls(for: tab)) { c in
+                PrismSlider(control: c, value: studio.binding(c.id)) { studio.commit(c.label) }
+            }
+        }
+    }
+
+    private var realismPanel: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            PrismHeading(title: "Realism Studio")
+            ForEach(StudioControls.realism) { c in
+                if c.id == "defocus" {
+                    Divider().padding(.vertical, 4)
+                    PrismHeading(title: "Subject & Depth")
+                    Text("Apple Vision finds the subject on this Mac; Depth Enhancement and Background Defocus work around it.")
+                        .font(.caption).foregroundStyle(PrismTheme.secondaryText)
+                }
+                if c.id == "halation" {
+                    Divider().padding(.vertical, 4)
+                    PrismHeading(title: "Film Look")
+                }
                 PrismSlider(control: c, value: studio.binding(c.id)) { studio.commit(c.label) }
             }
         }
@@ -448,6 +473,12 @@ struct StudioStrip: View {
                         StripThumb(item: item, selected: studio.item?.id == item.id)
                             .id(item.id)
                             .onTapGesture { withAnimation(PrismTheme.spring) { studio.open(item) } }
+                            .contextMenu {
+                                Button("Open") { studio.open(item) }
+                                Button("Paste Settings") { studio.pasteSettings(to: [item]) }.disabled(studio.copiedLook == nil)
+                                Button("Match Current Picture to This") { studio.matchTo(item) }
+                                    .disabled(!studio.hasImage || studio.item?.id == item.id)
+                            }
                     }
                     Button { studio.chooseFiles() } label: {
                         Image(systemName: "plus").font(.title3).frame(width: 64, height: 64)
