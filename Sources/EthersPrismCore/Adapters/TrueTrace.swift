@@ -105,8 +105,15 @@ public enum TrueTrace {
     /// A family's recipe, tuned for one look: its description sets the line style and shading,
     /// and its sample picture sets the colours (the traced palette is repainted to match it).
     public static func recipe(_ family: Family, look: Look?, detail: Double = 0.6) -> [String: Any] {
+        // The Detail slider goes on last. (It used to sit in a `defer`, which ran after the value was returned,
+        // so the slider had no effect.)
+        var r = lookRecipe(family, look: look)
+        applyDetail(&r, detail)
+        return r
+    }
+
+    static func lookRecipe(_ family: Family, look: Look?) -> [String: Any] {
         var r = recipe(family)
-        defer { applyDetail(&r, detail) }
         guard let look else { return r }
         let words = look.description.lowercased()
         // keep "colors" etc. as numbers we can do sums on

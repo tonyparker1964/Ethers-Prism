@@ -162,6 +162,7 @@ public final class ImageImportLibrary {
 
     /// The picture's size, when the whole file can be read as an image; nil while it is incomplete.
     public static func readableImage(_ url: URL) -> (width: Int?, height: Int?)? {
+        guard hasCompleteEnding(url) else { return nil }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
               CGImageSourceGetStatus(source) == .statusComplete,
               CGImageSourceGetCount(source) > 0,
@@ -170,6 +171,28 @@ public final class ImageImportLibrary {
         let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 64]
         guard CGImageSourceCreateThumbnailAtIndex(source, 0, opts as CFDictionary) != nil else { return nil }
         return ((props[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue, (props[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue)
+    }
+
+    /// PNG and JPEG files say where they end (ImageIO will happily decode half of one): a PNG's last chunk is
+    /// IEND, a JPEG's last marker is FFD9. Other formats rely on the decode and the size-settling check.
+    static func hasCompleteEnding(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        guard let size = try? handle.seekToEnd(), size > 16 else { return false }
+        let tailLength = min(size, 4096)
+        try? handle.seek(toOffset: size - tailLength)
+        guard let tail = try? handle.readToEnd() else { return false }
+        try? handle.seek(toOffset: 0)
+        let head = (try? handle.read(upToCount: 4)) ?? Data()
+        if head.starts(with: [0x89, 0x50, 0x4E, 0x47]) {                                  // PNG
+            return tail.suffix(12).range(of: Data("IEND".utf8)) != nil
+        }
+        if head.starts(with: [0xFF, 0xD8]) {                                              // JPEG
+            // Some writers pad after the end marker; look for FFD9 near the end.
+            let bytes = [UInt8](tail.suffix(64))
+            return zip(bytes, bytes.dropFirst()).contains { $0 == 0xFF && $1 == 0xD9 }
+        }
+        return true
     }
 
     public static func sha256(of url: URL) throws -> String {

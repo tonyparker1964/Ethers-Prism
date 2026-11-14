@@ -156,7 +156,7 @@ public enum StudioRenderer {
         if v("temperature") != 0 {
             img = img.applyingFilter("CITemperatureAndTint", parameters: [
                 "inputNeutral": CIVector(x: 6500, y: 0),
-                "inputTargetNeutral": CIVector(x: 6500 + v("temperature") * 30, y: 0)])
+                "inputTargetNeutral": CIVector(x: 6500 - v("temperature") * 30, y: 0)])
         }
         let vibrance = pct("vibrance") + photo * 0.12
         if vibrance != 0 {
