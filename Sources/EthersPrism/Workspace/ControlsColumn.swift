@@ -288,6 +288,34 @@ private struct GreasePencilStyles: View {
         }
     }
 
+    // Exposure, contrast, saturation, warmth, glow and stroke opacity.
+    private let visions: [(name: String, values: [Double])] = [
+        ("Kemet Starpilot", [45, 58, 56, 70, 12, 8]),
+        ("Retro Afrofuturist Epic", [49, 46, 43, 65, 8, 5]),
+        ("Celestial Third-Eye Portrait", [51, 59, 74, 41, 24, 16]),
+        ("Arcane Library Cinema", [39, 72, 59, 79, 32, 18]),
+        ("Sacred Geometry Cosmos", [44, 66, 68, 43, 25, 31]),
+        ("Golden Portal Epic", [53, 50, 58, 72, 20, 7]),
+        ("Cosmic Pilgrim", [41, 57, 55, 35, 18, 8]),
+        ("Celestial Clockwork Icon", [43, 72, 67, 51, 23, 27]),
+        ("Nubian Couture Noir", [41, 76, 44, 59, 4, 3]),
+        ("Pharaonic Astronaut", [50, 68, 56, 61, 26, 12]),
+        ("Animal Couture Runway", [56, 56, 69, 52, 0, 0]),
+        ("Sacred Light Chiaroscuro", [38, 75, 36, 77, 30, 14]),
+        ("Surreal Minimal Sculpture", [52, 48, 28, 53, 0, 0]),
+        ("Silent Monastery", [52, 39, 24, 43, 0, 0]),
+        ("Mythic Vessel Surrealism", [51, 54, 67, 48, 16, 12]),
+        ("Desert Oracle Film Still", [53, 56, 47, 75, 6, 5])
+    ]
+
+    private func visionDials(_ values: [Double]) -> [String: Double] {
+        let names = ["Exposure", "Contrast", "Saturation", "Warmth", "Glow", "Stroke opacity"]
+        var dials = Style.mixed.values
+        for (name, value) in zip(names, values) { dials[name] = value }
+        dials["Ink fidelity"] = 80
+        return dials
+    }
+
     var body: some View {
         Section("Grease Pencil") {
             ForEach(Style.allCases, id: \.self) { style in
@@ -308,6 +336,14 @@ private struct GreasePencilStyles: View {
                     }
                 }
                 .buttonStyle(.borderless)
+            }
+            Menu("Visions Styles") {
+                ForEach(visions.indices, id: \.self) { index in
+                    let vision = visions[index]
+                    Button(vision.name) {
+                        model.applyGreasePencilStyle(visionDials(vision.values))
+                    }
+                }
             }
             Text("Select a sample to update the dials. Play Preview to see the reveal.")
                 .font(.caption).foregroundStyle(.secondary)
