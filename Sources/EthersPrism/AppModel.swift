@@ -441,7 +441,7 @@ final class AppModel: ObservableObject {
     }
 
     func renderPhotoReveal4K() {
-        guard let session = current, let path = GreasePencilLogoAdapter.imagePath(from: session.goal),
+        guard let goal = current?.goal, let path = GreasePencilLogoAdapter.imagePath(from: goal),
               let image = NSImage(contentsOfFile: path), image.size.width > 0, image.size.height > 0 else {
             alertMessage = "Choose a readable image first."
             return
@@ -452,16 +452,21 @@ final class AppModel: ObservableObject {
             "Anti-aliasing": 60, "Exposure": 50, "Contrast": 50, "Saturation": 50,
             "Warmth": 50, "Light falloff": 0, "Camera push": 0
         ]
-        updateSession(session.id) { session in
+        applyGreasePencilStyle(preset)
+        generate(.render, force: true)
+    }
+
+    func applyGreasePencilStyle(_ preset: [String: Double]) {
+        let values = Dictionary(uniqueKeysWithValues: preset.map { ($0.key.lowercased(), $0.value) })
+        update { session in
             let names = Set(session.dials.map { $0.name.lowercased() })
             session.dials += GreasePencilLogoAdapter.standardDials.filter { !names.contains($0.name.lowercased()) }
             for index in session.dials.indices {
-                if let value = preset.first(where: { $0.key.lowercased() == session.dials[index].name.lowercased() })?.value {
+                if let value = values[session.dials[index].name.lowercased()] {
                     session.dials[index].value = value
                 }
             }
         }
-        generate(.render, force: true)
     }
 
     func chooseWalkPoses() {

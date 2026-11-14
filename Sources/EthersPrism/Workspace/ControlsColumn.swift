@@ -9,6 +9,7 @@ struct ControlsColumn: View {
     var body: some View {
         Form {
             GoalSection()
+            if model.adapter.id == "linelogo" { GreasePencilStyles() }
             DialsSection()
             ConstraintsSection()
             PlaySection()
@@ -265,6 +266,64 @@ struct StartImageRow: View {
                 Image(systemName: "photo.badge.plus").font(.title2).foregroundStyle(.tertiary)
                 Text(path == nil ? "No starting image yet." : "The starting image can't be opened.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct GreasePencilStyles: View {
+    @EnvironmentObject var model: AppModel
+
+    private enum Style: String, CaseIterable {
+        case photo = "Photo Reveal"
+        case ink = "Draw-On"
+        case mixed = "Ink + Photo"
+
+        var values: [String: Double] {
+            switch self {
+            case .photo: return ["Photo reveal": 100, "Stroke opacity": 0, "Glow": 0, "Reveal easing": 65]
+            case .ink: return ["Photo reveal": 0, "Stroke opacity": 100, "Glow": 0, "Line weight": 20, "Reveal easing": 0]
+            case .mixed: return ["Photo reveal": 100, "Stroke opacity": 25, "Glow": 0, "Line weight": 10, "Reveal easing": 65]
+            }
+        }
+    }
+
+    var body: some View {
+        Section("Grease Pencil") {
+            ForEach(Style.allCases, id: \.self) { style in
+                Button {
+                    model.applyGreasePencilStyle(style.values)
+                } label: {
+                    HStack {
+                        sample(style)
+                            .frame(width: 76, height: 48)
+                            .accessibilityHidden(true)
+                        Text(style.rawValue)
+                        Spacer()
+                        if style.values.allSatisfy({ name, value in
+                            model.current?.dials.first { $0.name.lowercased() == name.lowercased() }?.value == value
+                        }) {
+                            Image(systemName: "checkmark").accessibilityLabel("Applied")
+                        }
+                    }
+                }
+                .buttonStyle(.borderless)
+            }
+            Text("Select a sample to update the dials. Play Preview to see the reveal.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func sample(_ style: Style) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6).fill(.black)
+            Image(systemName: style == .ink ? "scribble" : "mountain.2.fill")
+                .font(.system(size: 25))
+                .foregroundStyle(style == .ink ? Color.white : Color.orange)
+            if style == .mixed {
+                Image(systemName: "mountain.2")
+                    .font(.system(size: 25))
+                    .foregroundStyle(.white)
             }
         }
     }
