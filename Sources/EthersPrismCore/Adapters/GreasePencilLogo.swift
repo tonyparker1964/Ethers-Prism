@@ -166,6 +166,17 @@ public struct GreasePencilLogoAdapter: DomainAdapter {
                          asset: mp4, assetExtension: "mp4")
     }
 
+    public static func editableTrace(_ state: WorkingState, project: URL, movie: URL) throws -> String {
+        var settings = parameters(CompileInput(state: state, quality: .render))
+        settings["project"] = project.path
+        settings["out"] = movie.path
+        let data = try JSONSerialization.data(withJSONObject: settings)
+        let payload = data.base64EncodedString()
+        return script.replacingOccurrences(
+            of: "a = json.loads(sys.argv[sys.argv.index('--') + 1])",
+            with: "import base64\na = json.loads(base64.b64decode('\(payload)'))")
+    }
+
     /// Runs inside Blender. Traces the image into Grease Pencil lines and renders them drawing on.
     static let script = #"""
 import bpy, sys, json, math, random
@@ -175,7 +186,11 @@ a = json.loads(sys.argv[sys.argv.index('--') + 1])
 preview = a['quality'] == 'preview'
 seed = int(a.get('seed', 7))
 
-bpy.ops.wm.read_factory_settings(use_empty=True)
+if a.get('project'):
+    for old_object in list(bpy.context.scene.objects):
+        bpy.data.objects.remove(old_object, do_unlink=True)
+else:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
 
 # ---------------------------------------------------------------- image -> grid
 img = bpy.data.images.load(a['image'])
@@ -465,6 +480,8 @@ if glow_layer is not None:
 
 # ------------------------------------------------------------ photo reveal
 if a['photo'] > 0:
+    if a.get('project'):
+        img.pack()
     half_w, half_h = W / max(W, H), H / max(W, H)
     mesh = bpy.data.meshes.new('Photo')
     mesh.from_pydata([(-half_w, 0.04, -half_h), (half_w, 0.04, -half_h),
@@ -656,6 +673,16 @@ if a.get('stills'):
         print('Measure failed:', e, file=sys.stderr)
 else:
     scene.render.filepath = a['out']
-    bpy.ops.render.render(animation=True)
+    if a.get('project'):
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        scene.frame_set(min(frames, draw_frames + step + 1))
+        for screen in bpy.data.screens:
+            for area in screen.areas:
+                if area.type == 'VIEW_3D':
+                    area.spaces.active.region_3d.view_perspective = 'CAMERA'
+        bpy.ops.wm.save_as_mainfile(filepath=a['project'])
+    else:
+        bpy.ops.render.render(animation=True)
 """#
 }

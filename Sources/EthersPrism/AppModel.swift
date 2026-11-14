@@ -373,11 +373,12 @@ final class AppModel: ObservableObject {
         store.assetsDir.appendingPathComponent(sessionID.uuidString).appendingPathComponent("Drawing.blend")
     }
 
-    func openGreasePencilDrawing(reference: URL? = nil) {
+    func openGreasePencilDrawing(reference: URL? = nil, automaticTrace: Bool = false) {
         guard !creatingDrawing else { return }
         let existing = adapter.id == "linelogo" && reference == nil ? current : nil
         let session = existing ?? Session(title: "Grease Pencil Drawing", domainID: "linelogo")
-        let project = drawingProject(for: session.id)
+        let drawing = drawingProject(for: session.id)
+        let project = automaticTrace ? drawing.deletingLastPathComponent().appendingPathComponent("Auto Trace.blend") : drawing
         let blender = URL(fileURLWithPath: BlenderStageAdapter.blenderPath)
         guard FileManager.default.isExecutableFile(atPath: blender.path) else {
             alertMessage = "Install Blender in Applications to open a Grease Pencil drawing."
@@ -396,11 +397,20 @@ final class AppModel: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let script = folder.appendingPathComponent("Create Drawing.py")
-            try GreasePencilProject.setupScript.write(to: script, atomically: true, encoding: .utf8)
+            let movie = folder.appendingPathComponent(automaticTrace ? "Auto Trace Animation" : "Animation")
+            let setup: String
+            if automaticTrace, let reference {
+                var state = session.workingState
+                state.goal = reference.path
+                setup = try GreasePencilLogoAdapter.editableTrace(state, project: project, movie: movie)
+            } else {
+                setup = GreasePencilProject.setupScript
+            }
+            try setup.write(to: script, atomically: true, encoding: .utf8)
             let process = Process()
             process.executableURL = blender
             process.arguments = GreasePencilProject.arguments(for: project, script: script, reference: reference,
-                                                              movie: folder.appendingPathComponent("Animation"))
+                                                              movie: movie)
             try process.run()
             if existing == nil {
                 try store.save(session)

@@ -79,6 +79,10 @@ struct GoalSection: View {
                         model.openGreasePencilDrawing()
                     }
                     .disabled(model.creatingDrawing)
+                    if GreasePencilLogoAdapter.imagePath(from: session.goal) != nil {
+                        Button("Auto Trace in Blender") { model.openGreasePencilDrawing(automaticTrace: true) }
+                            .disabled(model.creatingDrawing)
+                    }
                     Button("Import Blender Animation…") { model.importGreasePencilAnimation() }
                     Text("Draw and animate in Blender. Use Render → Render Animation, then import the movie here.")
                         .font(.caption).foregroundStyle(.secondary)
