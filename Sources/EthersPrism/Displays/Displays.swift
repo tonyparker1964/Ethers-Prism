@@ -183,6 +183,11 @@ struct ImageResultView: View {
             } else {
                 missing("Image file not found. Imported sessions don't include media files.")
             }
+            if showPrompt, let url = model.assetURL(output),
+               GreasePencilLogoAdapter.imageExtensions.contains(url.pathExtension.lowercased()),
+               FileManager.default.fileExists(atPath: url.path) {
+                Button("Open in Line Logo") { model.openInLineLogo(url) }
+            }
             if showPrompt, let prompt = output.imagePrompt {
                 DisclosureGroup("Image prompt") {
                     Text(prompt).font(.caption).textSelection(.enabled)

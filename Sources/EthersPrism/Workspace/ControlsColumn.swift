@@ -73,6 +73,9 @@ struct GoalSection: View {
                 if model.adapter.id == "i2v" {
                     StartImageRow()
                 }
+                if model.adapter.id == "image" && model.imageProviderKind == "comfyui" {
+                    ReferenceImageControls()
+                }
                 HStack {
                     if model.adapter.id == "i2v" {
                         Button { chooseFile(types: StartImage.extensions, keepDescription: true) } label: {
@@ -101,7 +104,7 @@ struct GoalSection: View {
                     Button {
                         Task { await model.suggestDials() }
                     } label: {
-                        Label((model.current?.dials.isEmpty ?? true) ? "Suggest Dials" : "Re-suggest Dials",
+                        Label(model.adapter.id == "image" && model.current?.imageReference != nil ? "Preview Variation" : ((model.current?.dials.isEmpty ?? true) ? "Suggest Dials" : "Re-suggest Dials"),
                               systemImage: "sparkles")
                     }
                     .disabled(model.suggesting)
@@ -146,6 +149,38 @@ struct GoalSection: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let words = keepDescription ? StartImage.split(model.current?.goal ?? "").description : ""
         model.goalBinding.wrappedValue = words.isEmpty ? url.path : "\(url.path)\n\(words)"
+    }
+}
+
+struct ReferenceImageControls: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button("Choose Reference Image…") {
+                let panel = NSOpenPanel()
+                panel.allowedContentTypes = [.image]
+                guard panel.runModal() == .OK, let url = panel.url else { return }
+                model.update { $0.imageReference = ImageReference(path: url.path) }
+            }
+            if let reference = model.current?.imageReference {
+                HStack {
+                    Text(URL(fileURLWithPath: reference.path).lastPathComponent)
+                        .lineLimit(1)
+                    Spacer()
+                    Button("Remove") { model.update { $0.imageReference = nil } }
+                }
+                let denoise = Binding(
+                    get: { model.current?.imageReference?.denoise ?? 0.25 },
+                    set: { value in model.update { $0.imageReference?.denoise = value } }
+                )
+                Slider(value: denoise, in: 0.05...1, step: 0.05) {
+                    Text("Denoise")
+                }
+                Text("Denoise \(reference.denoise, format: .number.precision(.fractionLength(2))) · Lower values stay closer to the reference.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 }
 

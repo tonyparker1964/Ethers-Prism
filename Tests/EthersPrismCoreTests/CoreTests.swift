@@ -436,3 +436,27 @@ final class DialCommandTests: XCTestCase {
         }
     }
 }
+
+final class ImageReferenceTests: XCTestCase {
+    func testComfyWorkflowUsesTheUploadedImageAndDenoise() throws {
+        let reference = ImageReference(path: "/tmp/portrait.png")
+        let job = ImageJob(prompt: "Warm light", negative: "", quality: .render, seed: 42, reference: reference)
+        let graph = ComfyUIImageProvider.workflow(for: job, settings: ComfyUISettings(), uploadedReference: "portrait.png")
+        func node(_ id: String) throws -> [String: Any] {
+            try XCTUnwrap(graph[id] as? [String: Any])
+        }
+        XCTAssertEqual(try node("10")["class_type"] as? String, "LoadImage")
+        XCTAssertEqual(try (node("10")["inputs"] as? [String: Any])?["image"] as? String, "portrait.png")
+        XCTAssertEqual(try node("5")["class_type"] as? String, "VAEEncode")
+        XCTAssertEqual(try (node("3")["inputs"] as? [String: Any])?["denoise"] as? Double, 0.25)
+    }
+
+    func testReferenceSurvivesSessionRoundTripAndInvalidatesPreview() throws {
+        var session = Session(domainID: "image")
+        let original = session.workingState
+        session.imageReference = ImageReference(path: "/tmp/portrait.png")
+        let restored = try JSONDecoder().decode(Session.self, from: JSONEncoder().encode(session))
+        XCTAssertEqual(restored.workingState.imageReference, session.imageReference)
+        XCTAssertFalse(restored.workingState.generatesSame(as: original))
+    }
+}

@@ -251,6 +251,7 @@ final class AppModel: ObservableObject {
     var activeRoles: [AgentRole] {
         // Beats are made from your samples directly; only the Music Producer helps set them up.
         if adapter.id == "beats" { return [.producer] }
+        if adapter.id == "image", current?.imageReference != nil { return [] }
         var roles: [AgentRole] = [.dialDesigner]
         if adapter.capabilities.needsImageProvider || adapter.capabilities.needsVideoProvider { roles.append(.artDirector) }
         else if adapter.capabilities.kind == .code { roles.append(.coder) }
@@ -366,6 +367,23 @@ final class AppModel: ObservableObject {
         try? store.save(s)
     }
 
+    func openInLineLogo(_ url: URL) {
+        var s = Session(title: "Image variation animation", domainID: "linelogo")
+        do {
+            let asset = try store.saveAsset(Data(contentsOf: url), ext: url.pathExtension,
+                                            sessionID: s.id, name: "source-image")
+            guard let source = store.assetURL(asset) else {
+                throw PrismError.local("Couldn't locate the copied image.")
+            }
+            s.goal = source.path
+            try store.save(s)
+            sessions.insert(s, at: 0)
+            selectedID = s.id
+        } catch {
+            alertMessage = "Couldn't create the Line Logo session: \(error.localizedDescription)"
+        }
+    }
+
     func newSession(from template: EditorTemplate, goal: String) {
         let s = template.makeSession(goal: goal)
         sessions.insert(s, at: 0)
@@ -423,7 +441,10 @@ final class AppModel: ObservableObject {
     }
 
     /// Fields that work without a goal: Line Logo uses the emblem, Animation and 3D Stage their samples.
-    var goalOptional: Bool { ["linelogo", "animate", "stage"].contains(adapter.id) }
+    var goalOptional: Bool {
+        ["linelogo", "animate", "stage"].contains(adapter.id)
+            || (adapter.id == "image" && current?.imageReference != nil)
+    }
 
     func suggestDials() async {
         guard let s = current, goalOptional || !s.goal.trimmed.isEmpty else {
@@ -432,6 +453,10 @@ final class AppModel: ObservableObject {
         }
         suggesting = true
         defer { suggesting = false }
+        if adapter.id == "image", s.imageReference != nil {
+            generate(.preview, force: true)
+            return
+        }
         if adapter.id == "beats" {
             await suggestBeatDials(s)
             return
