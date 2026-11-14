@@ -129,6 +129,19 @@ In **Text**, **Image**, **3D Stage**, **3D from Image** and **True Trace**, the 
 - **3D Stage:** the 3D tab's looks become finishes on your model (**Apply This Finish to the Model**): clay, felt, vinyl, porcelain, marble, wood, glass, metal and more, with a matching backdrop. Other looks are dimmed.
 - **True Trace** and **3D from Image:** 2D looks are drawn by Grease Pencil (**True Trace in This Look**) and 3D looks are sculpted in Blender (**Build This Look in 3D**), from the field's image (see True Trace above).
 
+## Creative Studio (Design Option C)
+
+PRISM's window has a dark Creative Studio sidebar: **Create** (every field and session, as before), **Import / Paste**, **Auto-Import**, **Library**, **Edit Studio**, **Realism Studio**, **Upscale Studio**, **Presets** and **Export**.
+
+- **Getting images in:** ⌘V pastes an image copied in the ChatGPT app (right-click → Copy Image); drag and drop; Choose Images…; or Auto-Import. Everything lands in the PRISM library (originals are never changed; duplicates are skipped).
+- **Canvas:** before/after comparison with a draggable divider, zoom in/out (⌘+ / ⌘−), Fit (⌘0), 100% (⌘1), pinch to zoom, Pan, Crop, rotate left/right, and fullscreen preview (⌃⌘F).
+- **Adjust:** Exposure, Brightness, Contrast, Highlights, Shadows, Saturation, Vibrance, White Balance, Sharpness.
+- **Realism:** Photorealism, Microtexture, Skin Detail Preservation, Surface Detail, Depth Enhancement, Local Contrast, Highlight Recovery, Shadow Recovery, Edge Refinement, Noise Reduction.
+- **Enhance:** Local (Mac) engine; Detail Recovery, Noise Reduction, Edge Refinement and Texture Preservation for anything made larger; Upscale 2×, Upscale 4× and **Enhance to 4K** (long edge 3840) save a new version to the library. "AI (Optional)" stays off unless an AI engine is configured; nothing needs the OpenAI API.
+- Every slider is a real Core Image operation running on the Mac's GPU (Metal), previewed live in the background. Upscaling is Lanczos resampling plus detail recovery and edge refinement, not generative AI.
+- Undo / Redo (⌘Z / ⇧⌘Z), per-slider reset, Reset tab, Reset All, autosaved projects with a history menu, saved presets.
+- **Export:** PNG, JPEG, TIFF, HEIC and WebP (where macOS can write it), at original, 2×, 4×, 3840×2160 or a custom width, with quality and transparency settings, through the normal Save dialog.
+
 ## PRISM Auto-Import (Settings → Auto-Import)
 
 Images you save from the ChatGPT desktop app land in the PRISM library on their own.
@@ -178,6 +191,7 @@ Sessions, history, sweep, compare, templates, storage and export work automatica
 
 The number lives in `Sources/EthersPrismCore/Core/AppVersion.swift` and `Support/Info.plist` (a test keeps them in step). The middle number goes up for new fields or features, the last for fixes. After an update, run `./install-app.sh` to refresh the copy in Applications.
 
+- **1.6.0** (Nov 14, 2026): Design Option C — Creative Studio: dark teal interface, PRISM sidebar, Edit / Realism / Upscale Studio image editor with before/after, crop, rotate, zoom, presets, history, local 4K enhancement and export. Create keeps every existing field.
 - **1.5.0** (Nov 14, 2026): PRISM Auto-Import: images saved from the ChatGPT app into a watched folder are copied into the PRISM library (`~/Pictures/PRISM/ChatGPT Imports`) with thumbnails, duplicate checks and optional notifications, ready to open in True Trace. Also True Trace, Choose your look, Sculpt 3D and the Detail slider.
 - **1.4.0** (Nov 11, 2026): Cleaner macOS look: sessions grouped by field with search, Preview and Render in the toolbar and at the bottom of the controls, grouped settings-style controls, History in a side inspector, results shown on a canvas. Blender Script errors show only the script's own lines.
 - **1.3.0** (Nov 11, 2026): Blender Script (from Claude) field: scripts copied from Claude fill in by themselves, are saved in a library, preview as one frame and render as MP4.

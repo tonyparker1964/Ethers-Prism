@@ -127,6 +127,8 @@ struct SessionSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background(PrismTheme.sidebar)
         .searchable(text: $search, placement: .sidebar, prompt: "Search sessions")
         .safeAreaInset(edge: .top, spacing: 0) {
             HStack(spacing: 10) {

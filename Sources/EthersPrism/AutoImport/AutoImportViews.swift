@@ -62,6 +62,8 @@ struct AutoImportSettingsTab: View {
 /// The PRISM library: imported pictures as thumbnails. Double-click to open in the editor.
 struct ImportLibrarySheet: View {
     @EnvironmentObject var auto: AutoImportController
+    /// Shown as the Library page rather than a sheet.
+    var embedded = false
     @State private var dropping = false
 
     private let columns = [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 12)]
@@ -76,7 +78,9 @@ struct ImportLibrarySheet: View {
                 Spacer()
                 Button("Add Images…") { addImages() }
                 Button("Show in Finder") { auto.showInFinder() }
-                Button("Done") { auto.showLibrary = false }.keyboardShortcut(.defaultAction)
+                if !embedded {
+                    Button("Done") { auto.showLibrary = false }.keyboardShortcut(.defaultAction)
+                }
             }
             .padding()
             Divider()
@@ -103,7 +107,7 @@ struct ImportLibrarySheet: View {
             Text("Double-click a picture to open it in \(auto.openTarget.label). Right-click for more.")
                 .font(.caption).foregroundStyle(.secondary).padding(8)
         }
-        .frame(minWidth: 720, minHeight: 520)
+        .frame(minWidth: embedded ? nil : 720, minHeight: embedded ? nil : 520)
         .overlay {
             if dropping { RoundedRectangle(cornerRadius: 10).stroke(Color.accentColor, lineWidth: 3).padding(4) }
         }

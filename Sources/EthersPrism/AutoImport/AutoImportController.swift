@@ -11,10 +11,11 @@ import EthersPrismCore
 @MainActor
 final class AutoImportController: ObservableObject {
     enum OpenTarget: String, CaseIterable, Identifiable {
-        case trueTrace, imageReference
+        case studio, trueTrace, imageReference
         var id: String { rawValue }
         var label: String {
             switch self {
+            case .studio: return "Edit Studio"
             case .trueTrace: return "True Trace"
             case .imageReference: return "Image (as reference)"
             }
@@ -76,7 +77,7 @@ final class AutoImportController: ObservableObject {
         enabled = d.bool(forKey: Keys.enabled)
         notify = d.bool(forKey: Keys.notify)
         openAutomatically = d.bool(forKey: Keys.openAuto)
-        openTarget = OpenTarget(rawValue: d.string(forKey: Keys.openTarget) ?? "") ?? .trueTrace
+        openTarget = OpenTarget(rawValue: d.string(forKey: Keys.openTarget) ?? "") ?? .studio
         do {
             let lib = try ImageImportLibrary()
             lib.repairThumbnails()
@@ -188,19 +189,22 @@ final class AutoImportController: ObservableObject {
 
     private var retries: [String: Int] = [:]
 
-    private func importOne(_ url: URL, retry: Bool) {
-        guard let library else { return }
+    @discardableResult
+    private func importOne(_ url: URL, retry: Bool, quiet: Bool = false) -> ImportedImage? {
+        guard let library else { return nil }
         do {
             switch try library.importFile(url) {
             case .imported(let item):
                 items = library.items
                 retries[url.path] = nil
                 status = "Imported \(item.originalName)"
-                if notify { postNotification(for: item) }
-                if openAutomatically { onOpen?(library.fileURL(for: item), openTarget) }
+                if notify && !quiet { postNotification(for: item) }
+                if openAutomatically && !quiet { onOpen?(library.fileURL(for: item), openTarget) }
+                return item
             case .duplicate(let item):
                 retries[url.path] = nil
                 status = "\(url.lastPathComponent) is already in the library (as \(item.fileName))."
+                return item
             case .notReady:
                 // Still downloading or not readable yet: try a few more times.
                 let n = (retries[url.path] ?? 0) + 1
@@ -212,6 +216,7 @@ final class AutoImportController: ObservableObject {
         } catch {
             status = "Couldn't import \(url.lastPathComponent): \(error.localizedDescription)"
         }
+        return nil
     }
 
     /// Imports the pictures already in the watched folder (duplicates are skipped).
@@ -228,9 +233,24 @@ final class AutoImportController: ObservableObject {
     }
 
     /// Imports pictures you choose by hand (or drop on the library).
-    func importFiles(_ urls: [URL]) {
-        for url in urls { importOne(url, retry: false) }
+    @discardableResult
+    func importFiles(_ urls: [URL]) -> [ImportedImage] {
+        urls.compactMap { importOne($0, retry: false, quiet: true) }
     }
+
+    /// Imports a picture that only exists in memory (pasted, or rendered by the Studio) by writing it to a
+    /// temporary file with `name` first.
+    @discardableResult
+    func importData(_ data: Data, name: String) -> ImportedImage? {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("prism-import-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent(name)
+        guard (try? data.write(to: url)) != nil else { return nil }
+        return importOne(url, retry: false, quiet: true)
+    }
+
+    func fileURL(for item: ImportedImage) -> URL? { library?.fileURL(for: item) }
 
     func remove(_ item: ImportedImage) {
         guard let library else { return }

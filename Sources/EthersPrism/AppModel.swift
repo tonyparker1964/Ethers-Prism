@@ -24,6 +24,8 @@ final class AppModel: ObservableObject {
     let store = Store()
     /// PRISM Auto-Import: new pictures saved into a watched folder go into the PRISM library.
     let autoImport: AutoImportController
+    /// Edit / Realism / Upscale Studio and the PRISM sidebar.
+    let studio: StudioModel
 
     @Published var sessions: [Session] = []
     @Published var selectedID: UUID?
@@ -86,6 +88,7 @@ final class AppModel: ObservableObject {
 
     init() {
         autoImport = AutoImportController()
+        studio = StudioModel(autoImport: autoImport, root: Store().root)
         let key = Keychain.read(Self.keyAccount) ?? ""
         hasAPIKey = !key.isEmpty
         if let d = UserDefaults.standard.data(forKey: "agentTeam"), let t = try? JSONDecoder().decode(AgentTeam.self, from: d) {
@@ -125,7 +128,11 @@ final class AppModel: ObservableObject {
     /// Opens a picture from the PRISM library in a new session: True Trace, or the Image field with it as the reference.
     func openImported(_ url: URL, in target: AutoImportController.OpenTarget) {
         let name = url.deletingPathExtension().lastPathComponent
+        if target != .studio { studio.section = .create }
         switch target {
+        case .studio:
+            studio.open(url: url)
+            if studio.section.studioTab == nil { studio.section = .edit }
         case .trueTrace:
             openInLineLogo(url)
             if let i = sessions.firstIndex(where: { $0.id == selectedID }), sessions[i].domainID == "linelogo" {
