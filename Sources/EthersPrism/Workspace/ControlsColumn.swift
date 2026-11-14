@@ -73,6 +73,16 @@ struct GoalSection: View {
                 if model.adapter.id == "i2v" {
                     StartImageRow()
                 }
+                if model.adapter.id == "linelogo", let session = model.current {
+                    let hasProject = FileManager.default.fileExists(atPath: model.drawingProject(for: session.id).path)
+                    Button(hasProject ? "Reopen Drawing in Blender" : "Open in Blender for Drawing") {
+                        model.openGreasePencilDrawing()
+                    }
+                    .disabled(model.creatingDrawing)
+                    Button("Import Blender Animation…") { model.importGreasePencilAnimation() }
+                    Text("Draw and animate in Blender. Use Render → Render Animation, then import the movie here.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if model.adapter.id == "image" && model.imageProviderKind == "comfyui" {
                     ReferenceImageControls()
                 }

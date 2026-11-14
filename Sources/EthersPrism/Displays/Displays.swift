@@ -187,6 +187,8 @@ struct ImageResultView: View {
                GreasePencilLogoAdapter.imageExtensions.contains(url.pathExtension.lowercased()),
                FileManager.default.fileExists(atPath: url.path) {
                 Button("Open in Line Logo") { model.openInLineLogo(url) }
+                Button("Open in Blender for Drawing") { model.openGreasePencilDrawing(reference: url) }
+                    .disabled(model.creatingDrawing)
             }
             if showPrompt, let prompt = output.imagePrompt {
                 DisclosureGroup("Image prompt") {

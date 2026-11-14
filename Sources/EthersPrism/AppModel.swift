@@ -367,6 +367,84 @@ final class AppModel: ObservableObject {
         try? store.save(s)
     }
 
+    @Published private(set) var creatingDrawing = false
+
+    func drawingProject(for sessionID: UUID) -> URL {
+        store.assetsDir.appendingPathComponent(sessionID.uuidString).appendingPathComponent("Drawing.blend")
+    }
+
+    func openGreasePencilDrawing(reference: URL? = nil) {
+        guard !creatingDrawing else { return }
+        let existing = adapter.id == "linelogo" && reference == nil ? current : nil
+        let session = existing ?? Session(title: "Grease Pencil Drawing", domainID: "linelogo")
+        let project = drawingProject(for: session.id)
+        let blender = URL(fileURLWithPath: BlenderStageAdapter.blenderPath)
+        guard FileManager.default.isExecutableFile(atPath: blender.path) else {
+            alertMessage = "Install Blender in Applications to open a Grease Pencil drawing."
+            return
+        }
+        if FileManager.default.fileExists(atPath: project.path) {
+            NSWorkspace.shared.open([project], withApplicationAt: blender.deletingLastPathComponent()
+                .deletingLastPathComponent().deletingLastPathComponent(), configuration: .init()) { _, error in
+                if let error { Task { @MainActor in self.alertMessage = error.localizedDescription } }
+            }
+            return
+        }
+        let reference = reference ?? existing.flatMap { GreasePencilLogoAdapter.imagePath(from: $0.goal) }
+            .map { URL(fileURLWithPath: $0) }
+        let folder = project.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let script = folder.appendingPathComponent("Create Drawing.py")
+            try GreasePencilProject.setupScript.write(to: script, atomically: true, encoding: .utf8)
+            let process = Process()
+            process.executableURL = blender
+            process.arguments = GreasePencilProject.arguments(for: project, script: script, reference: reference,
+                                                              movie: folder.appendingPathComponent("Animation"))
+            try process.run()
+            if existing == nil {
+                try store.save(session)
+                sessions.insert(session, at: 0)
+                selectedID = session.id
+            }
+            creatingDrawing = true
+            Task {
+                defer {
+                    creatingDrawing = false
+                    try? FileManager.default.removeItem(at: script)
+                }
+                for _ in 0..<120 {
+                    if FileManager.default.fileExists(atPath: project.path) { return }
+                    if !process.isRunning { break }
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
+                if !FileManager.default.fileExists(atPath: project.path) {
+                    alertMessage = "Blender didn't save the drawing. Check the Blender window and try again."
+                }
+            }
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    func importGreasePencilAnimation() {
+        guard let session = current else { return }
+        let panel = NSOpenPanel()
+        panel.directoryURL = drawingProject(for: session.id).deletingLastPathComponent()
+        panel.allowedContentTypes = [.mpeg4Movie, .quickTimeMovie]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let asset = try store.saveAsset(Data(contentsOf: url, options: .mappedIfSafe),
+                                            ext: url.pathExtension, sessionID: session.id, name: UUID().uuidString)
+            updateSession(session.id) {
+                $0.record(Output(kind: .video, text: url.lastPathComponent, assetPath: asset,
+                                 provider: "Blender", model: "Grease Pencil"), origin: .imported, state: session.workingState)
+            }
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
     func openInLineLogo(_ url: URL) {
         var s = Session(title: "Image variation animation", domainID: "linelogo")
         do {
