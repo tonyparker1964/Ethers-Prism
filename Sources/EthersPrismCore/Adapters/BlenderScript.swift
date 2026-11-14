@@ -230,6 +230,7 @@ public struct BlenderScriptAdapter: DomainAdapter {
     - Grease Pencil (v3 API): bpy.data.grease_pencils_v3 if it exists, else bpy.data.grease_pencils. Drawings via layer.frames.new(frame).drawing, drawing.add_strokes(sizes); point data through attributes['position'/'radius'/'opacity'/'vertex_color'] with foreach_set.
     - ALWAYS set layer.use_lights = False on Grease Pencil layers (otherwise lines render dim).
     - Glow/bloom: compositor via scene.compositing_node_group = bpy.data.node_groups.new(name, 'CompositorNodeTree') with a Glare node; set glare.inputs['Type'].default_value = 'Bloom'.
+    - If this project has "Blender cheat sheet for Ethers Prism" in its knowledge, follow it for API names, Grease Pencil, Line Art, modifiers and render settings.
     - Wrap risky API calls in try/except so the script doesn't stop halfway.
     - Aim for professional quality: good lighting, smooth eased camera moves, clean materials, a strong composition.
     - After the code block, tell me in 2-3 lines what it makes and which values to change to adjust it.

@@ -106,8 +106,12 @@ public struct TextAdapter: DomainAdapter {
     }
 
     public func compile(_ input: CompileInput) -> CompiledRequest {
-        let text = Compiler.buildText(role: role, format: format, input: input,
+        var text = Compiler.buildText(role: role, format: format, input: input,
                                       previewTokens: previewTokens, renderTokens: renderTokens)
+        // The Coder gets the Blender cheat sheet whenever the goal is about Blender.
+        if agent == .coder && BlenderReference.isAbout(input.state.goal) {
+            text.system += BlenderReference.agentAddition
+        }
         return CompiledRequest(input: input, text: text, seed: Compiler.seed(for: text.user))
     }
 

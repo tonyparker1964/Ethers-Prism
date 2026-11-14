@@ -241,6 +241,15 @@ struct BlenderScriptRow: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Copy text for a Claude project's instructions, so its scripts suit this field")
+                Button {
+                    if let path = try? BlenderReference.save() {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                    }
+                } label: {
+                    Label("Cheat Sheet", systemImage: "book.closed")
+                }
+                .buttonStyle(.borderless)
+                .help("Save the Blender cheat sheet and show it in Finder, ready to add to the Claude project's knowledge")
             }
             if let note = model.scriptNote {
                 Text(note).font(.caption).foregroundStyle(.secondary)

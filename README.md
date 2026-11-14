@@ -63,6 +63,15 @@ Raise **Trace resolution**, **Micro-detail**, **Edge sensitivity**, and **Path p
 
 Ask Claude for a scene and copy the script it writes. With this field open, Prism picks the script up from the clipboard by itself (or press **Paste Script**), saves it in `~/Documents/Ethers Prism Exports/Blender Scripts/`, and previews one frame. **Render Full Quality** renders the whole animation as MP4 (kept in the same folder). **Library** reopens any saved script; **Open in Blender** opens it in Blender's window to tweak by hand; **Copy Error** copies a failed script's error to paste back into Claude. **Copy Instructions for Claude** copies text for a Claude project's instructions so its scripts suit this field (title line, no render calls, Blender 5.2 Grease Pencil notes). Only text that imports `bpy` is picked up, and only while this field is open and Prism is in front.
 
+## Blender cheat sheet
+
+[Docs/Blender-Cheat-Sheet.md](Docs/Blender-Cheat-Sheet.md) is a full Blender 5.2 reference for Prism: the command line, the Python API, Grease Pencil, modifiers and effects, Line Art, rendering and video, the compositor, and recipes for line-art and animatic work. It is built into the app:
+
+- The **Coder** agent gets it automatically whenever a goal mentions Blender, bpy, Grease Pencil, Line Art or EEVEE.
+- In the Blender Script field, **Cheat Sheet** saves it to `~/Documents/Ethers Prism Exports/` and shows it in Finder, ready to add to your Claude project's knowledge. The Claude Instructions tell Claude to follow it.
+
+After editing the doc, run `python3 scripts/sync-blender-reference.py` to rebuild the built-in copy (a test checks they match).
+
 ## Beats (Settings → Sounds)
 
 The **Beats (your samples)** field makes real audio from your own one-shot samples: Native Instruments Maschine expansions, Battery kits and any folders of WAV, AIFF or FLAC files. No AI and no internet are involved, and the same dials always give the same beat.
