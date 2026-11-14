@@ -532,6 +532,20 @@ final class AppModel: ObservableObject {
         generate(.preview, force: true)
     }
 
+    /// Image without a reference: adds the Studio look to the goal (replacing any earlier look) and previews it.
+    func useStudioLook(_ style: StudioStyle) {
+        guard adapter.id == "image" else { return }
+        update { $0.setGoal(style.goal(adding: $0.goal)) }
+        generate(.preview, force: true)
+    }
+
+    /// Line Logo: opens a Studio Style session for the chosen image and restyles it with this look right away.
+    func restyleLineLogo(with style: StudioStyle) {
+        openStudioStyleSession()
+        guard adapter.id == "image", current?.imageReference != nil else { return }
+        applyStudioStyle(style)
+    }
+
     func openInLineLogo(_ url: URL) {
         var s = Session(title: "Image variation animation", domainID: "linelogo")
         do {

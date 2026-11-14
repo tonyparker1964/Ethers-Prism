@@ -97,7 +97,7 @@ Kontakt instruments store their samples in Native Instruments' locked formats (.
 
 ## Using it
 
-1. Pick a field, type a goal, press **Suggest Dials** (4–8 dials). Edit, add, delete, reorder (pencil → Move Up/Down) or lock any dial.
+1. Pick a field with its button at the top of the controls, type a goal, press **Suggest Dials** (4–8 dials). Edit, add, delete, reorder (pencil → Move Up/Down) or lock any dial.
 2. Add **fixed requirements** (accuracy, accessibility, must include, must avoid). They are never put on sliders.
 3. Release a slider and a preview appears once the dials stop moving. **Explore Nearby** nudges unlocked dials. **Render Full Quality** when you're ready.
 4. **Edit Text** to change a result by hand. Saving makes a new history state, and regenerating never overwrites it.
@@ -106,6 +106,14 @@ Kontakt instruments store their samples in Native Instruments' locked formats (.
 7. **Compare** two states side by side, including differences in goal, dials and requirements.
 8. **Templates:** *Save Editor as Template* and *New from Template*. Three editable examples are included.
 9. **Export** writes the result, a portable session file and a readable authorship log into a folder. **Import Session** opens a session file.
+
+## Choose your look
+
+In **Image** and **Line Logo**, the **Choose your look** section has all 146 Ether Image Studio looks, in the Studio's six collections: Images, 3D, Anime, Donghua, World and Visions. Each collection is a tab showing its count, with a grid of sample thumbnails. Click a thumbnail to pick a look, then:
+
+- **Image with a reference image** (ComfyUI): **Apply Look to Reference** restyles the picture.
+- **Image without a reference:** **Use This Look** adds the look to your goal and makes a preview.
+- **Line Logo:** **Restyle Image with This Look** restyles the chosen image in a new Studio Style session; from the result, **Open in Line Logo** traces and animates it.
 
 ## Storage
 

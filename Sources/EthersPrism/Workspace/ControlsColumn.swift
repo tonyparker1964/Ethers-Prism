@@ -9,6 +9,9 @@ struct ControlsColumn: View {
     var body: some View {
         Form {
             GoalSection()
+            if model.adapter.id == "image" || model.adapter.id == "linelogo" {
+                Section("Choose your look") { StudioStyleControls() }
+            }
             if model.adapter.id == "linelogo" { GreasePencilStyles() }
             DialsSection()
             ConstraintsSection()
@@ -49,15 +52,9 @@ struct GoalSection: View {
     var body: some View {
         Section("Goal") {
             Group {
-                Picker("Field", selection: model.domainBinding) {
-                    ForEach(fields.map(\.id), id: \.self) { fid in
-                        let a = Domains.adapter(for: fid)
-                        Label(Domains.isRetired(a.id) ? "\(a.name) (retired)"
-                              : a.status.isReady ? a.name : "\(a.name) (unfinished)", systemImage: a.symbol).tag(a.id)
-                    }
-                }
-                // Rebuild the menu per session: otherwise it can keep showing the previous session's field.
-                .id(model.current?.id)
+                FieldButtons(fields: fields)
+                    // Rebuild per session so the highlight always matches this session's field.
+                    .id(model.current?.id)
                 if Domains.isRetired(model.adapter.id) {
                     Banner(style: .info, text: "This field is retired. This session still opens with its results; for new work, choose another field.")
                 } else if let note = model.adapter.status.note {
@@ -101,7 +98,6 @@ struct GoalSection: View {
                 }
                 if model.adapter.id == "image" && model.imageProviderKind == "comfyui" {
                     ReferenceImageControls()
-                    StudioStyleControls()
                 }
                 HStack {
                     if model.adapter.id == "i2v" {
@@ -666,6 +662,54 @@ struct PlaySection: View {
                     .buttonStyle(.borderless)
                     .fixedSize()
                     .disabled(model.current?.dials.isEmpty ?? true)
+                }
+            }
+        }
+    }
+}
+
+/// One button per field, two to a row. The current session's field is highlighted.
+struct FieldButtons: View {
+    @EnvironmentObject var model: AppModel
+    let fields: [any DomainAdapter]
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 2)
+
+    /// "Line Logo (Grease Pencil)" → "Line Logo", so names fit on a button.
+    static func shortName(_ name: String) -> String {
+        name.components(separatedBy: " (").first ?? name
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Field").font(.caption).foregroundStyle(.secondary)
+            LazyVGrid(columns: columns, spacing: 6) {
+                ForEach(fields.map(\.id), id: \.self) { fid in
+                    let a = Domains.adapter(for: fid)
+                    let selected = model.adapter.id == fid
+                    let fullName = Domains.isRetired(a.id) ? "\(a.name) (retired)"
+                        : a.status.isReady ? a.name : "\(a.name) (unfinished)"
+                    Button { model.domainBinding.wrappedValue = fid } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: a.symbol).frame(width: 16)
+                            Text(Self.shortName(a.name)).lineLimit(1).minimumScaleFactor(0.8)
+                            Spacer(minLength: 0)
+                        }
+                        .font(.callout.weight(selected ? .semibold : .regular))
+                        .foregroundStyle(selected ? Color.primary : Color.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 7)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 7)
+                            .fill(selected ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.06)))
+                        .overlay(RoundedRectangle(cornerRadius: 7)
+                            .strokeBorder(selected ? Color.accentColor : Color.clear, lineWidth: 1.5))
+                        .contentShape(RoundedRectangle(cornerRadius: 7))
+                    }
+                    .buttonStyle(.plain)
+                    .help(fullName)
+                    .accessibilityLabel(fullName)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
         }
