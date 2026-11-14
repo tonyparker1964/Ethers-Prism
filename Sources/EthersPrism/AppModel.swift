@@ -22,6 +22,8 @@ final class AppModel: ObservableObject {
     static let keyAccount = "anthropic-api-key"
 
     let store = Store()
+    /// PRISM Auto-Import: new pictures saved into a watched folder go into the PRISM library.
+    let autoImport: AutoImportController
 
     @Published var sessions: [Session] = []
     @Published var selectedID: UUID?
@@ -83,6 +85,7 @@ final class AppModel: ObservableObject {
     private var debounceTask: Task<Void, Never>?
 
     init() {
+        autoImport = AutoImportController()
         let key = Keychain.read(Self.keyAccount) ?? ""
         hasAPIKey = !key.isEmpty
         if let d = UserDefaults.standard.data(forKey: "agentTeam"), let t = try? JSONDecoder().decode(AgentTeam.self, from: d) {
@@ -113,6 +116,33 @@ final class AppModel: ObservableObject {
         }
         if sessions.isEmpty { newSession() } else { selectedID = sessions.first?.id }
         startClipboardWatch()
+        autoImport.onOpen = { [weak self] url, target in self?.openImported(url, in: target) }
+        autoImport.start()
+    }
+
+    // MARK: - PRISM Auto-Import
+
+    /// Opens a picture from the PRISM library in a new session: True Trace, or the Image field with it as the reference.
+    func openImported(_ url: URL, in target: AutoImportController.OpenTarget) {
+        let name = url.deletingPathExtension().lastPathComponent
+        switch target {
+        case .trueTrace:
+            openInLineLogo(url)
+            if let i = sessions.firstIndex(where: { $0.id == selectedID }), sessions[i].domainID == "linelogo" {
+                sessions[i].title = name
+                try? store.save(sessions[i])
+            }
+        case .imageReference:
+            var s = Session(title: name, domainID: "image")
+            s.imageReference = ImageReference(path: url.path, denoise: 0.55)
+            do {
+                try store.save(s)
+                sessions.insert(s, at: 0)
+                selectedID = s.id
+            } catch {
+                alertMessage = error.localizedDescription
+            }
+        }
     }
 
     // MARK: - Blender Script: scripts copied from Claude

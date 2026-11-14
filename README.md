@@ -129,6 +129,25 @@ In **Text**, **Image**, **3D Stage**, **3D from Image** and **True Trace**, the 
 - **3D Stage:** the 3D tab's looks become finishes on your model (**Apply This Finish to the Model**): clay, felt, vinyl, porcelain, marble, wood, glass, metal and more, with a matching backdrop. Other looks are dimmed.
 - **True Trace** and **3D from Image:** 2D looks are drawn by Grease Pencil (**True Trace in This Look**) and 3D looks are sculpted in Blender (**Build This Look in 3D**), from the field's image (see True Trace above).
 
+## PRISM Auto-Import (Settings → Auto-Import)
+
+Images you save from the ChatGPT desktop app land in the PRISM library on their own.
+
+1. Settings → Auto-Import: turn it on and choose the folder you save into — **Choose Folder…**, **Use Downloads**, or **Use a ChatGPT Folder** (creates `Downloads/ChatGPT Images`).
+2. In ChatGPT, save the picture into that folder.
+3. PRISM sees the new file, waits until it has finished saving, and copies it into `~/Pictures/PRISM/ChatGPT Imports`, with a thumbnail.
+4. Open the library from the sidebar (**ChatGPT Imports**) or **File → ChatGPT Imports…** (⇧⌘I). Double-click a picture to edit it in True Trace, or right-click → Open in Image (as reference).
+
+- PNG, JPEG, HEIC, TIFF and WebP. Copies are byte-for-byte; the original is never changed or moved.
+- Duplicates are found by SHA-256 of the file's contents, so the same picture saved twice comes in once.
+- Half-finished downloads (`.crdownload`, `.download`, `.part`, still growing, or not yet readable) are waited for.
+- While PRISM is closed, nothing is watched; at the next launch it picks up pictures saved since it last looked.
+- The first time you choose a folder, only new pictures come in. **Import Existing Images Now** brings in what's already there.
+- Optional: a notification for each import, and opening each new picture straight in the editor.
+- The folder choice is kept as a security-scoped bookmark, so access survives restarts.
+
+PRISM only watches the folder you choose. It doesn't read ChatGPT's data or talk to ChatGPT, and ChatGPT has no automatic image-download feature for it to use: you save the picture, PRISM does the rest.
+
 ## Storage
 
 `~/Library/Application Support/Ethers Prism/` holds `Sessions/` (versioned JSON, saved atomically), `Assets/<session>/` (generated media, referenced by relative paths) and `Templates/`. Imported files are validated: newer formats are refused and any path that could leave the Assets folder is dropped.
@@ -159,6 +178,7 @@ Sessions, history, sweep, compare, templates, storage and export work automatica
 
 The number lives in `Sources/EthersPrismCore/Core/AppVersion.swift` and `Support/Info.plist` (a test keeps them in step). The middle number goes up for new fields or features, the last for fixes. After an update, run `./install-app.sh` to refresh the copy in Applications.
 
+- **1.5.0** (Nov 14, 2026): PRISM Auto-Import: images saved from the ChatGPT app into a watched folder are copied into the PRISM library (`~/Pictures/PRISM/ChatGPT Imports`) with thumbnails, duplicate checks and optional notifications, ready to open in True Trace. Also True Trace, Choose your look, Sculpt 3D and the Detail slider.
 - **1.4.0** (Nov 11, 2026): Cleaner macOS look: sessions grouped by field with search, Preview and Render in the toolbar and at the bottom of the controls, grouped settings-style controls, History in a side inspector, results shown on a canvas. Blender Script errors show only the script's own lines.
 - **1.3.0** (Nov 11, 2026): Blender Script (from Claude) field: scripts copied from Claude fill in by themselves, are saved in a library, preview as one frame and render as MP4.
 - **1.2.0** (Nov 11, 2026): 3D from Image (Blender) field with Relief and Extrude, metal/glass/neon materials, and Open in 3D Stage.

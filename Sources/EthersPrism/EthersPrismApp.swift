@@ -17,6 +17,7 @@ struct EthersPrismApp: App {
         WindowGroup("Ethers Prism") {
             ContentView()
                 .environmentObject(model)
+                .environmentObject(model.autoImport)
                 .frame(minWidth: 1040, minHeight: 680)
                 .onAppear { NSApplication.shared.activate(ignoringOtherApps: true) }
         }
@@ -38,6 +39,9 @@ struct EthersPrismApp: App {
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                 Button("Import Session…") { model.importSession() }
                     .keyboardShortcut("o")
+                Divider()
+                Button("ChatGPT Imports…") { model.autoImport.showLibrary = true }
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
             }
             CommandMenu("Explore") {
                 Button("Preview") { model.generate(.preview, force: true) }
@@ -56,6 +60,7 @@ struct EthersPrismApp: App {
         Settings {
             SettingsView()
                 .environmentObject(model)
+                .environmentObject(model.autoImport)
         }
     }
 }

@@ -12,6 +12,7 @@ struct SettingsView: View {
             imageTab.tabItem { Label("Images", systemImage: "photo") }
             mixarTab.tabItem { Label("Mixar", systemImage: "cube") }
             soundsTab.tabItem { Label("Sounds", systemImage: "waveform") }
+            AutoImportSettingsTab().tabItem { Label("Auto-Import", systemImage: "square.and.arrow.down.on.square") }
             storageTab.tabItem { Label("Storage", systemImage: "folder") }
         }
         .frame(width: 640, height: 620)

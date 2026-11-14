@@ -3,6 +3,7 @@ import EthersPrismCore
 
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var auto: AutoImportController
     @AppStorage("showHistory") private var showHistory = true
     @State private var search = ""
 
@@ -54,6 +55,9 @@ struct ContentView: View {
         .sheet(isPresented: $model.showSaveTemplate) {
             SaveTemplateSheet().environmentObject(model)
         }
+        .sheet(isPresented: $auto.showLibrary) {
+            ImportLibrarySheet().environmentObject(auto)
+        }
     }
 }
 
@@ -92,6 +96,7 @@ enum FieldStyle {
 /// Sessions grouped by field, with search.
 struct SessionSidebar: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var auto: AutoImportController
     @Binding var search: String
 
     private var groups: [(field: any DomainAdapter, sessions: [Session])] {
@@ -136,12 +141,28 @@ struct SessionSidebar: View {
             .padding(.vertical, 8)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+            Button { auto.showLibrary = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: auto.enabled ? "square.and.arrow.down.on.square.fill" : "square.and.arrow.down.on.square")
+                        .foregroundStyle(auto.enabled ? Color.accentColor : .secondary)
+                    Text("ChatGPT Imports")
+                    Spacer()
+                    Text("\(auto.items.count)").font(.caption).foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .help(auto.enabled ? auto.status : "Auto-Import is off (Settings → Auto-Import)")
             HStack {
                 Text("Version \(AppVersion.number)").font(.caption2).foregroundStyle(.tertiary)
                 Spacer()
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
+            }
         }
         .toolbar {
             ToolbarItem {

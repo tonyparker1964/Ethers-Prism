@@ -16,10 +16,12 @@
     <true/>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>PRISM Auto-Import watches the folder you choose for images you save from the ChatGPT app.</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.4.0</string>
+    <string>1.5.0</string>
     <key>CFBundleVersion</key>
-    <string>5</string>
+    <string>6</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
 </dict>
