@@ -80,7 +80,7 @@ public enum StudioCurves {
 
     // MARK: - HSV
 
-    static func toHSV(_ c: SIMD3<Double>) -> SIMD3<Double> {
+    public static func toHSV(_ c: SIMD3<Double>) -> SIMD3<Double> {
         let mx = max(c.x, c.y, c.z), mn = min(c.x, c.y, c.z), d = mx - mn
         var h = 0.0
         if d > 1e-9 {
@@ -93,7 +93,7 @@ public enum StudioCurves {
         return SIMD3(h, mx > 0 ? d / mx : 0, mx)
     }
 
-    static func fromHSV(_ hsv: SIMD3<Double>) -> SIMD3<Double> {
+    public static func fromHSV(_ hsv: SIMD3<Double>) -> SIMD3<Double> {
         let h = (hsv.x - floor(hsv.x)) * 6, s = min(max(hsv.y, 0), 1), v = hsv.z
         let i = Int(h) % 6, f = h - floor(h)
         let p = v * (1 - s), q = v * (1 - s * f), t = v * (1 - s * (1 - f))
