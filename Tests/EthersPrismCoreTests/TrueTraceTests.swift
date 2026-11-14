@@ -69,3 +69,20 @@ final class Sculpt3DTests: XCTestCase {
         XCTAssertTrue(Sculpt3D.script.contains("def height_field("))
     }
 }
+
+final class ChooseYourLookFieldTests: XCTestCase {
+    func testLookLineIsReadFromTheGoal() {
+        XCTAssertEqual(Sculpt3D.lookName(in: "/tmp/cub.glb\n\nLook: Claymation — Soft modelling clay."), "Claymation")
+        XCTAssertNil(Sculpt3D.lookName(in: "/tmp/cub.glb"))
+    }
+
+    func testThreeDStageGetsTheFinishAndStillFindsTheModel() {
+        let goal = "/tmp/cub.glb\n\nLook: Marble Statue — Carved stone."
+        XCTAssertEqual(BlenderStageAdapter.modelPath(from: goal), "/tmp/cub.glb")
+        let state = WorkingState(goal: goal, domainID: "stage", dials: [], constraints: [])
+        let p = BlenderStageAdapter.parameters(CompileInput(state: state, quality: .preview))
+        XCTAssertEqual((p["finish"] as? [String: Any])?["pattern"] as? String, "marble")
+        let plain = WorkingState(goal: "/tmp/cub.glb", domainID: "stage", dials: [], constraints: [])
+        XCTAssertNil(BlenderStageAdapter.parameters(CompileInput(state: plain, quality: .preview))["finish"])
+    }
+}

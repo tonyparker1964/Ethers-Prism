@@ -9,7 +9,7 @@ struct ControlsColumn: View {
     var body: some View {
         Form {
             GoalSection()
-            if model.adapter.id == "image" || model.adapter.id == "linelogo" {
+            if ["text", "image", "stage", "model3d", "linelogo"].contains(model.adapter.id) {
                 Section("Choose your look") { StudioStyleControls() }
             }
             if model.adapter.id == "linelogo" { GreasePencilStyles() }

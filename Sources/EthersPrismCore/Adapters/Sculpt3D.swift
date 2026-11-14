@@ -51,6 +51,15 @@ public enum Sculpt3D {
         return nil
     }
 
+    /// The look named on a goal's "Look: …" line (added by Choose your look), if any.
+    public static func lookName(in goal: String) -> String? {
+        for line in goal.components(separatedBy: .newlines) where line.hasPrefix("Look: ") {
+            let rest = line.dropFirst("Look: ".count)
+            return String(rest.components(separatedBy: " — ").first ?? String(rest)).trimmed
+        }
+        return nil
+    }
+
     /// Settings read by the Blender script.
     public static func recipe(_ finish: Finish) -> [String: Any] {
         var r: [String: Any] = ["name": finish.title, "grid": 300, "depth": 0.8, "detail": 0.25, "roughness": 0.5]

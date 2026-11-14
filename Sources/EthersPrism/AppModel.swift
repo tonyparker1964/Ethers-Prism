@@ -539,7 +539,7 @@ final class AppModel: ObservableObject {
     /// True Trace: Grease Pencil redraws the chosen image in a look (or faithfully, with no look).
     /// Records the drawing-on video and the finished still in History; the .blend stays in the run's folder.
     func trueTrace(look: StudioStyle?) {
-        guard !trueTracing, let session = current, adapter.id == "linelogo" else { return }
+        guard !trueTracing, let session = current, ["linelogo", "model3d"].contains(adapter.id) else { return }
         guard let path = GreasePencilLogoAdapter.imagePath(from: session.goal) else {
             alertMessage = "Choose an image first (Choose Image… under the goal)."
             return
@@ -588,7 +588,7 @@ final class AppModel: ObservableObject {
     /// The 3D looks: Blender sculpts the chosen image into a rounded model with the look's material,
     /// records the still and the turntable in History, and keeps the .blend and .glb in the run's folder.
     func sculpt3D(look: StudioStyle) {
-        guard !trueTracing, let session = current, adapter.id == "linelogo" else { return }
+        guard !trueTracing, let session = current, ["linelogo", "model3d"].contains(adapter.id) else { return }
         guard let path = GreasePencilLogoAdapter.imagePath(from: session.goal) else {
             alertMessage = "Choose an image first (Choose Image… under the goal)."
             return
@@ -635,8 +635,10 @@ final class AppModel: ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting([project ?? folder])
     }
 
+    /// Text, Image without a reference, 3D Stage: adds the look to the goal (replacing any earlier look) and previews.
+    /// Text writes for it, Image draws it, 3D Stage puts the 3D look's finish on the model.
     func useStudioLook(_ style: StudioStyle) {
-        guard adapter.id == "image" else { return }
+        guard ["image", "text", "stage"].contains(adapter.id) else { return }
         update { $0.setGoal(style.goal(adding: $0.goal)) }
         generate(.preview, force: true)
     }

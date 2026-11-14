@@ -89,9 +89,7 @@ struct StudioStyleControls: View {
                     LazyVGrid(columns: thumbColumns, spacing: 10) {
                         ForEach(styles) { s in
                             LookTile(style: s, selected: s.id == style?.id,
-                                     dimmed: model.adapter.id == "linelogo"
-                                        && TrueTrace.family(look: s.name, collection: s.collection) == nil
-                                        && Sculpt3D.finish(look: s.name) == nil) { styleID = s.id }
+                                     dimmed: isDimmed(s)) { styleID = s.id }
                         }
                     }
                     .padding(3)
@@ -114,7 +112,7 @@ struct StudioStyleControls: View {
     @ViewBuilder
     private func applyButton(_ style: StudioStyle) -> some View {
         let comfy = model.imageProviderKind == "comfyui"
-        if model.adapter.id == "linelogo" {
+        if model.adapter.id == "linelogo" || model.adapter.id == "model3d" {
             let hasImage = model.current.flatMap { GreasePencilLogoAdapter.imagePath(from: $0.goal) } != nil
             let family = TrueTrace.family(look: style.name, collection: style.collection)
             let finish = Sculpt3D.finish(look: style.name)
@@ -145,6 +143,20 @@ struct StudioStyleControls: View {
             if model.lastTrueTraceFolder != nil {
                 Button { model.showLastTrueTrace() } label: { Label("Show Blender File", systemImage: "folder") }
             }
+        } else if model.adapter.id == "stage" {
+            if let finish = Sculpt3D.finish(look: style.name) {
+                Button { model.useStudioLook(style) } label: {
+                    Label("Apply This Finish to the Model", systemImage: "cube")
+                }
+                hint("Gives your model a \(finish.title.lowercased()) finish with a matching backdrop, then previews it.")
+            } else {
+                hint("3D Stage applies 3D finishes to your model. Pick a look in the 3D tab.")
+            }
+        } else if model.adapter.id == "text" {
+            Button { model.useStudioLook(style) } label: {
+                Label("Use This Look", systemImage: "paintpalette")
+            }
+            hint("Adds the look to your goal, so the writing describes it or prompts for it.")
         } else if model.current?.imageReference != nil {
             Button { model.applyStudioStyle(style) } label: {
                 Label("Apply Look to Reference", systemImage: "paintpalette")
@@ -156,6 +168,18 @@ struct StudioStyleControls: View {
                 Label("Use This Look", systemImage: "paintpalette")
             }
             hint("Adds the look to your goal and makes a preview. Choose a reference image to restyle a picture instead.")
+        }
+    }
+
+    /// Looks this field can't use are shown faded.
+    private func isDimmed(_ s: StudioStyle) -> Bool {
+        switch model.adapter.id {
+        case "linelogo", "model3d":
+            return TrueTrace.family(look: s.name, collection: s.collection) == nil && Sculpt3D.finish(look: s.name) == nil
+        case "stage":
+            return Sculpt3D.finish(look: s.name) == nil
+        default:
+            return false
         }
     }
 
@@ -224,7 +248,7 @@ private struct LookTile: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(dimmed ? "\(style.name): a photo look, which Blender can't make" : "\(style.name): \(style.description)")
+        .help(dimmed ? "\(style.name): not available in this field" : "\(style.name): \(style.description)")
         .accessibilityLabel(style.name)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }

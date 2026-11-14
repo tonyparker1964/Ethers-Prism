@@ -118,11 +118,13 @@ Kontakt instruments store their samples in Native Instruments' locked formats (.
 
 ## Choose your look
 
-In **Image** and **True Trace**, the **Choose your look** section has all 146 Ether Image Studio looks, in the Studio's six collections: Images, 3D, Anime, Donghua, World and Visions. Each collection is a tab showing its count, with a grid of sample thumbnails. Click a thumbnail to pick a look, then:
+In **Text**, **Image**, **3D Stage**, **3D from Image** and **True Trace**, the **Choose your look** section has all 146 Ether Image Studio looks, in the Studio's six collections: Images, 3D, Anime, Donghua, World and Visions. Each collection is a tab showing its count, with a grid of sample thumbnails. Click a thumbnail to pick a look, then:
 
 - **Image with a reference image** (ComfyUI): **Apply Look to Reference** restyles the picture.
 - **Image without a reference:** **Use This Look** adds the look to your goal and makes a preview.
-- **True Trace:** **True Trace in This Look** has Grease Pencil redraw your image in that look (see True Trace above).
+- **Text:** **Use This Look** adds the look to your goal, so the writing describes it or prompts for it.
+- **3D Stage:** the 3D tab's looks become finishes on your model (**Apply This Finish to the Model**): clay, felt, vinyl, porcelain, marble, wood, glass, metal and more, with a matching backdrop. Other looks are dimmed.
+- **True Trace** and **3D from Image:** 2D looks are drawn by Grease Pencil (**True Trace in This Look**) and 3D looks are sculpted in Blender (**Build This Look in 3D**), from the field's image (see True Trace above).
 
 ## Storage
 
