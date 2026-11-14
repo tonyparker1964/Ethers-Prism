@@ -43,7 +43,12 @@ public protocol ImageProvider: Sendable {
     var model: String { get }
     /// Plain statement of whether previews really cost less than full renders.
     var previewCostNote: String { get }
+    var supportsReferenceImages: Bool { get }
     func generate(_ job: ImageJob) async throws -> ImageResult
+}
+
+public extension ImageProvider {
+    var supportsReferenceImages: Bool { false }
 }
 
 /// The providers for one generation. Each agent role can have its own text provider;
@@ -141,6 +146,7 @@ public struct ComfyUISettings: Codable, Hashable, Sendable {
 
 public struct ComfyUIImageProvider: ImageProvider {
     public let name = "ComfyUI (local)"
+    public let supportsReferenceImages = true
     public var settings: ComfyUISettings
     public var model: String { settings.checkpoint }
     public var previewCostNote: String {

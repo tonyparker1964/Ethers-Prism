@@ -438,6 +438,13 @@ final class DialCommandTests: XCTestCase {
 }
 
 final class ImageReferenceTests: XCTestCase {
+    func testMemoryHandoffPreservesReferenceImageSupport() {
+        let comfy = ComfyUIImageProvider(settings: ComfyUISettings())
+        let wrapped: any ImageProvider = MemoryAwareImageProvider(inner: comfy, lmStudioURL: "http://127.0.0.1:1234")
+        XCTAssertTrue(wrapped.supportsReferenceImages)
+        XCTAssertFalse(MockImageProvider().supportsReferenceImages)
+    }
+
     func testComfyWorkflowUsesTheUploadedImageAndDenoise() throws {
         let reference = ImageReference(path: "/tmp/portrait.png")
         let job = ImageJob(prompt: "Warm light", negative: "", quality: .render, seed: 42, reference: reference)

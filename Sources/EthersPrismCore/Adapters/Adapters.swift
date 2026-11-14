@@ -183,7 +183,7 @@ public struct ImageAdapter: DomainAdapter {
     private func run(_ request: CompiledRequest, _ providers: ProviderSet) async throws -> Generated {
         guard let imageProvider = providers.image else { throw PrismError.missingImageProvider }
         if let reference = request.input.state.imageReference {
-            guard imageProvider is ComfyUIImageProvider else {
+            guard imageProvider.supportsReferenceImages else {
                 throw PrismError.comfy("choose ComfyUI on this Mac to use a reference image.")
             }
             let goal = request.input.state.goal.trimmed

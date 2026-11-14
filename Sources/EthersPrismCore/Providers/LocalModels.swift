@@ -193,6 +193,7 @@ public struct MemoryAwareTextProvider: TextProvider {
 
 /// Unloads large LM Studio models before ComfyUI renders.
 public struct MemoryAwareImageProvider: ImageProvider {
+    public var supportsReferenceImages: Bool { inner.supportsReferenceImages }
     public var inner: any ImageProvider
     public var lmStudioURL: String
     public var name: String { inner.name }
