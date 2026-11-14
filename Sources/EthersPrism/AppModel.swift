@@ -437,8 +437,16 @@ final class AppModel: ObservableObject {
             return
         }
         do {
-            let dials = try await adapter.suggestDials(for: s.goal, using: providers)
-            updateSession(s.id) { $0.dials = dials }
+            let selectedAdapter = adapter
+            let dials = try await selectedAdapter.suggestDials(for: s.goal, using: providers)
+            updateSession(s.id) { session in
+                if selectedAdapter.id == "linelogo" {
+                    let names = Set(session.dials.map { $0.name.lowercased() })
+                    session.dials += dials.filter { !names.contains($0.name.lowercased()) }
+                } else {
+                    session.dials = dials
+                }
+            }
             generate(.preview, force: true)
         } catch {
             phase = .failed(error.localizedDescription)

@@ -390,7 +390,7 @@ struct PlaySection: View {
                             .help("Paste this into Claude so it can fix the script")
                     }
                 } else if model.adapter.id == "linelogo" {
-                    Text("Previews are 2-second, low-resolution clips and take a few seconds; Render Full Quality makes the full-length 720p clip. Set the dials, then press Preview.")
+                    Text("Suggest Dials adds any missing controls while keeping your settings. Resolution selects 720p, 1080p, 1440p, or 4K. Framing switches to portrait at 50. Photo reveal blends in the source image. Previews are 2 seconds at low resolution.")
                         .font(.caption).foregroundStyle(.secondary)
                 } else if model.adapter.capabilities.needsVideoProvider {
                     Text("Video previews take a few minutes on a Mac, so set the dials first, then press Preview. Starting another preview stops the one in progress.")
