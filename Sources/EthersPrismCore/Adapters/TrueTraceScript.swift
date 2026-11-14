@@ -207,6 +207,8 @@ def trace(rgb, r):
     palette = cel_shade(img, centers, labels, r.get('cel_levels', 0))
     if r.get('palette_saturation', 1) != 1:
         palette = adjust(palette[None], r['palette_saturation'])[0]
+    if r.get('sample_rgb') is not None:
+        palette = look_palette(palette, img, r['sample_rgb'], r.get('look_strength', 0.65), r.get('look_light', 0.35))
 
     H, W = labels.shape
     min_area = r.get('min_area', 12)
@@ -265,6 +267,39 @@ def trace(rgb, r):
                 lines.append({'pts': pts, 'strength': strength, 'col': tuple(f['col']), 'len': len(pts)})
     return {'w': W, 'h': H, 'fills': fills, 'lines': lines, 'palette': palette}
 
+
+# ------------------------------------------------------------------ the look's own colours
+def rgb_to_lab(rgb):
+    c = np.asarray(rgb, dtype=np.float64)
+    lin = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+    m = np.array([[0.4124, 0.3576, 0.1805], [0.2126, 0.7152, 0.0722], [0.0193, 0.1192, 0.9505]])
+    xyz = lin @ m.T / np.array([0.95047, 1.0, 1.08883])
+    f = np.where(xyz > 0.008856, np.cbrt(xyz), 7.787 * xyz + 16 / 116)
+    return np.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], -1)
+
+
+def lab_to_rgb(lab):
+    L, A, B = lab[..., 0], lab[..., 1], lab[..., 2]
+    fy = (L + 16) / 116; fx = fy + A / 500; fz = fy - B / 200
+    f = np.stack([fx, fy, fz], -1)
+    xyz = np.where(f ** 3 > 0.008856, f ** 3, (f - 16 / 116) / 7.787) * np.array([0.95047, 1.0, 1.08883])
+    m = np.array([[3.2406, -1.5372, -0.4986], [-0.9689, 1.8758, 0.0415], [0.0557, -0.2040, 1.0570]])
+    lin = np.clip(xyz @ m.T, 0, 1)
+    return np.where(lin <= 0.0031308, 12.92 * lin, 1.055 * lin ** (1 / 2.4) - 0.055).clip(0, 1)
+
+
+def look_palette(palette, source_rgb, sample_rgb, strength=0.65, light=0.35):
+    """Repaint the traced palette in the look's colours: match the colour statistics of the look's sample
+    (mean and spread of lightness and of each colour axis in Lab). Lightness moves less, so the picture stays readable."""
+    src = rgb_to_lab(source_rgb.reshape(-1, 3)[::7])
+    tgt = rgb_to_lab(sample_rgb.reshape(-1, 3)[::3])
+    ms, ss = src.mean(0), src.std(0) + 1e-6
+    mt, st = tgt.mean(0), tgt.std(0) + 1e-6
+    lab = rgb_to_lab(palette)
+    moved = (lab - ms) / ss * st + mt
+    w = np.array([light, strength, strength])
+    return lab_to_rgb(lab * (1 - w) + moved * w)
+
 # ====================================================================== Blender
 import bpy, sys, json, math
 
@@ -289,6 +324,20 @@ s = work / max(W0, H0)
 small = resize(rgb, max(8, int(W0 * s)), max(8, int(H0 * s)))
 if r.get('grey'):
     small = np.repeat(small.mean(2, keepdims=True), 3, axis=2)
+ls = r.get('look_sample')
+if ls:
+    try:
+        simg = bpy.data.images.load(ls['path'], check_existing=True)
+        sw, sh = simg.size
+        sp = np.empty(sw * sh * 4, dtype=np.float32)
+        simg.pixels.foreach_get(sp)
+        sp = sp.reshape(sh, sw, 4)[::-1, :, :3]
+        cw, ch, t = sw // ls['cols'], sh // ls['rows'], ls['tile']
+        row, col = t // ls['cols'], t % ls['cols']
+        r['sample_rgb'] = resize(sp[row * ch:(row + 1) * ch, col * cw:(col + 1) * cw], 96, 96)
+        print(f"Look colours: from the {ls.get('name', 'look')} sample", file=sys.stderr)
+    except Exception as e:
+        print('Look colours skipped:', e, file=sys.stderr)
 res = trace(small, r)
 w, h = res['w'], res['h']
 print(f"True Trace: {len(res['fills'])} shapes, {len(res['lines'])} ink lines from a {w}x{h} trace", file=sys.stderr)
@@ -552,6 +601,20 @@ try:
 except Exception as e:
     print('Draw-on modifier skipped:', e, file=sys.stderr)
 
+
+if r.get('boil') and final_ink:
+    # hand-drawn wobble on the ink, redrawn every couple of frames
+    try:
+        nz = obj.modifiers.new('Boil', 'GREASE_PENCIL_NOISE')
+        setp(nz, 'layer_filter', 'Ink')
+        setp(nz, 'factor', 0.35 * r['boil'])
+        setp(nz, 'factor_strength', 0.0)
+        setp(nz, 'factor_thickness', 0.15 * r['boil'])
+        setp(nz, 'noise_scale', 0.6)
+        setp(nz, 'use_random', True)
+        setp(nz, 'step', 2)
+    except Exception as e:
+        print('Boil skipped:', e, file=sys.stderr)
 
 if not final_ink and lines:
     # the pencil sketch steps aside once the colour is in

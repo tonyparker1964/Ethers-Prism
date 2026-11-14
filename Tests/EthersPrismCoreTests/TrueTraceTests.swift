@@ -86,3 +86,31 @@ final class ChooseYourLookFieldTests: XCTestCase {
         XCTAssertNil(BlenderStageAdapter.parameters(CompileInput(state: plain, quality: .preview))["finish"])
     }
 }
+
+final class LookRecipeTests: XCTestCase {
+    private func look(_ name: String, _ description: String) -> TrueTrace.Look {
+        TrueTrace.Look(name: name, description: description, collection: "Anime", samplePath: "/tmp/sheet.webp", cols: 5, rows: 5, tile: 3)
+    }
+
+    func testDescriptionsGiveEachAnimeLookItsOwnLinesAndShading() throws {
+        let showa = TrueTrace.recipe(.anime, look: look("Showa-era", "Thick ink lines, flat cel colors, simple shading, film grain."))
+        let shojo = TrueTrace.recipe(.anime, look: look("Shōjo", "Large luminous eyes, sparkles, soft pastels, delicate linework."))
+        let showaInk = try XCTUnwrap(showa["ink_w"] as? Double), shojoInk = try XCTUnwrap(shojo["ink_w"] as? Double)
+        XCTAssertGreaterThan(showaInk, shojoInk * 2, "thick ink vs delicate linework")
+        XCTAssertEqual(showa["cel_levels"] as? Int, 2)
+        XCTAssertGreaterThan(try XCTUnwrap(shojo["cel_levels"] as? Int), 5)
+        XCTAssertLessThan(try XCTUnwrap(shojo["saturation"] as? Double), 1.0)
+        XCTAssertEqual(showa["boil"] as? Double, 0.25)
+    }
+
+    func testTheSampleSetsTheColoursExceptForMonochromeFamilies() {
+        let anime = TrueTrace.recipe(.anime, look: look("City-pop retro", "1980s pastel neon, sunset gradients."))
+        XCTAssertEqual((anime["look_sample"] as? [String: Any])?["tile"] as? Int, 3)
+        XCTAssertNil(TrueTrace.recipe(.ink, look: look("Manga", "Monochrome linework"))["look_sample"])
+        XCTAssertTrue(JSONSerialization.isValidJSONObject(anime))
+    }
+
+    func testNoLookKeepsTheFamilyRecipe() {
+        XCTAssertNil(TrueTrace.recipe(.anime, look: nil)["look_sample"])
+    }
+}

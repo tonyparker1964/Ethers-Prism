@@ -565,7 +565,8 @@ final class AppModel: ObservableObject {
         Task {
             defer { trueTracing = false }
             do {
-                let result = try await TrueTrace.run(image: URL(fileURLWithPath: path), family: family, folder: folder)
+                let result = try await TrueTrace.run(image: URL(fileURLWithPath: path), family: family,
+                                                     look: look?.traceLook, folder: folder)
                 let movie = try store.saveAsset(Data(contentsOf: result.movie, options: .mappedIfSafe), ext: "mp4",
                                                 sessionID: session.id, name: UUID().uuidString)
                 let still = try store.saveAsset(Data(contentsOf: result.still), ext: "png",

@@ -205,6 +205,8 @@ def trace(rgb, r):
     palette = cel_shade(img, centers, labels, r.get('cel_levels', 0))
     if r.get('palette_saturation', 1) != 1:
         palette = adjust(palette[None], r['palette_saturation'])[0]
+    if r.get('sample_rgb') is not None:
+        palette = look_palette(palette, img, r['sample_rgb'], r.get('look_strength', 0.65), r.get('look_light', 0.35))
 
     H, W = labels.shape
     min_area = r.get('min_area', 12)
@@ -262,3 +264,36 @@ def trace(rgb, r):
             if max(strength) > 0:
                 lines.append({'pts': pts, 'strength': strength, 'col': tuple(f['col']), 'len': len(pts)})
     return {'w': W, 'h': H, 'fills': fills, 'lines': lines, 'palette': palette}
+
+
+# ------------------------------------------------------------------ the look's own colours
+def rgb_to_lab(rgb):
+    c = np.asarray(rgb, dtype=np.float64)
+    lin = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+    m = np.array([[0.4124, 0.3576, 0.1805], [0.2126, 0.7152, 0.0722], [0.0193, 0.1192, 0.9505]])
+    xyz = lin @ m.T / np.array([0.95047, 1.0, 1.08883])
+    f = np.where(xyz > 0.008856, np.cbrt(xyz), 7.787 * xyz + 16 / 116)
+    return np.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], -1)
+
+
+def lab_to_rgb(lab):
+    L, A, B = lab[..., 0], lab[..., 1], lab[..., 2]
+    fy = (L + 16) / 116; fx = fy + A / 500; fz = fy - B / 200
+    f = np.stack([fx, fy, fz], -1)
+    xyz = np.where(f ** 3 > 0.008856, f ** 3, (f - 16 / 116) / 7.787) * np.array([0.95047, 1.0, 1.08883])
+    m = np.array([[3.2406, -1.5372, -0.4986], [-0.9689, 1.8758, 0.0415], [0.0557, -0.2040, 1.0570]])
+    lin = np.clip(xyz @ m.T, 0, 1)
+    return np.where(lin <= 0.0031308, 12.92 * lin, 1.055 * lin ** (1 / 2.4) - 0.055).clip(0, 1)
+
+
+def look_palette(palette, source_rgb, sample_rgb, strength=0.65, light=0.35):
+    """Repaint the traced palette in the look's colours: match the colour statistics of the look's sample
+    (mean and spread of lightness and of each colour axis in Lab). Lightness moves less, so the picture stays readable."""
+    src = rgb_to_lab(source_rgb.reshape(-1, 3)[::7])
+    tgt = rgb_to_lab(sample_rgb.reshape(-1, 3)[::3])
+    ms, ss = src.mean(0), src.std(0) + 1e-6
+    mt, st = tgt.mean(0), tgt.std(0) + 1e-6
+    lab = rgb_to_lab(palette)
+    moved = (lab - ms) / ss * st + mt
+    w = np.array([light, strength, strength])
+    return lab_to_rgb(lab * (1 - w) + moved * w)

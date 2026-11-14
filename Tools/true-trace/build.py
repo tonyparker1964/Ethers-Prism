@@ -23,6 +23,20 @@ s = work / max(W0, H0)
 small = resize(rgb, max(8, int(W0 * s)), max(8, int(H0 * s)))
 if r.get('grey'):
     small = np.repeat(small.mean(2, keepdims=True), 3, axis=2)
+ls = r.get('look_sample')
+if ls:
+    try:
+        simg = bpy.data.images.load(ls['path'], check_existing=True)
+        sw, sh = simg.size
+        sp = np.empty(sw * sh * 4, dtype=np.float32)
+        simg.pixels.foreach_get(sp)
+        sp = sp.reshape(sh, sw, 4)[::-1, :, :3]
+        cw, ch, t = sw // ls['cols'], sh // ls['rows'], ls['tile']
+        row, col = t // ls['cols'], t % ls['cols']
+        r['sample_rgb'] = resize(sp[row * ch:(row + 1) * ch, col * cw:(col + 1) * cw], 96, 96)
+        print(f"Look colours: from the {ls.get('name', 'look')} sample", file=sys.stderr)
+    except Exception as e:
+        print('Look colours skipped:', e, file=sys.stderr)
 res = trace(small, r)
 w, h = res['w'], res['h']
 print(f"True Trace: {len(res['fills'])} shapes, {len(res['lines'])} ink lines from a {w}x{h} trace", file=sys.stderr)
@@ -286,6 +300,20 @@ try:
 except Exception as e:
     print('Draw-on modifier skipped:', e, file=sys.stderr)
 
+
+if r.get('boil') and final_ink:
+    # hand-drawn wobble on the ink, redrawn every couple of frames
+    try:
+        nz = obj.modifiers.new('Boil', 'GREASE_PENCIL_NOISE')
+        setp(nz, 'layer_filter', 'Ink')
+        setp(nz, 'factor', 0.35 * r['boil'])
+        setp(nz, 'factor_strength', 0.0)
+        setp(nz, 'factor_thickness', 0.15 * r['boil'])
+        setp(nz, 'noise_scale', 0.6)
+        setp(nz, 'use_random', True)
+        setp(nz, 'step', 2)
+    except Exception as e:
+        print('Boil skipped:', e, file=sys.stderr)
 
 if not final_ink and lines:
     # the pencil sketch steps aside once the colour is in

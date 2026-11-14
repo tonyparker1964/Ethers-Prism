@@ -64,6 +64,80 @@ public enum TrueTrace {
         }
     }
 
+    /// One Studio look: its words and its sample picture (a tile in a sample sheet).
+    public struct Look: Sendable {
+        public let name: String
+        public let description: String
+        public let collection: String
+        public let samplePath: String?
+        public let cols: Int
+        public let rows: Int
+        public let tile: Int
+
+        public init(name: String, description: String, collection: String, samplePath: String?, cols: Int, rows: Int, tile: Int) {
+            self.name = name; self.description = description; self.collection = collection
+            self.samplePath = samplePath; self.cols = cols; self.rows = rows; self.tile = tile
+        }
+    }
+
+    /// How a look's description changes its family's recipe: line weight, darkness and colour, shading levels,
+    /// colour count, saturation, contrast, hand-drawn wobble and glow. Keys ending in * multiply, + add, others set.
+    static let lookRules: [([String], [String: Double])] = [
+        (["thick ink", "heavy ink", "thick outline", "bold outline", "carved contours"], ["ink_w*": 1.6, "ink_dark": 1.0]),
+        (["crisp clean line", "clean line"], ["ink_dark": 0.95, "ink_soft*": 0.6]),
+        (["delicate linework", "fine line", "fine-line", "delicate"], ["ink_w*": 0.6, "ink_dark": 0.75]),
+        (["rough", "pencil", "sketch", "brushy"], ["ink_w*": 0.85, "boil": 0.5]),
+        (["colored-pencil", "colored line", "coloured line"], ["ink_dark": 0.45]),
+        (["flat cel", "flat planes", "flat bold", "flat color", "flat colour"], ["cel_levels": 3, "smooth_passes+": 1]),
+        (["simple shading", "limited"], ["cel_levels": 2]),
+        (["soft gradient", "airbrush", "soft", "glossy", "bloom", "detailed lighting", "luminous"], ["cel_levels+": 3, "ink_dark*": 0.75]),
+        (["pastel", "hazy"], ["saturation*": 0.7, "brightness": 0.08, "ink_dark*": 0.6]),
+        (["neon", "candy", "bright", "vivid", "brighter saturation", "bold color"], ["saturation*": 1.3]),
+        (["muted", "desaturated", "gentle palette", "natural color", "faded"], ["saturation*": 0.72]),
+        (["heavy shadows", "dramatic", "high contrast", "chiaroscuro", "gritty"], ["contrast*": 1.2]),
+        (["film grain", "vhs", "film tones", "hand-drawn", "hand-painted"], ["boil": 0.25]),
+        (["glow", "bloom", "luminous", "lens flare", "sparkle", "magic"], ["glow": 0.35]),
+        (["rounded", "cute", "big eyes", "chibi", "oversized heads"], ["round": 2, "chaikin": 2, "saturation*": 1.1]),
+        (["detailed", "intricate", "hyper-detailed", "ornate", "dense"], ["colors+": 6, "min_area*": 0.6]),
+        (["minimal", "simple", "negative space"], ["colors+": -4, "min_area*": 2.0]),
+    ]
+
+    /// A family's recipe, tuned for one look: its description sets the line style and shading,
+    /// and its sample picture sets the colours (the traced palette is repainted to match it).
+    public static func recipe(_ family: Family, look: Look?) -> [String: Any] {
+        var r = recipe(family)
+        guard let look else { return r }
+        let words = look.description.lowercased()
+        // keep "colors" etc. as numbers we can do sums on
+        func number(_ key: String, _ fallback: Double) -> Double {
+            if let d = r[key] as? Double { return d }
+            if let i = r[key] as? Int { return Double(i) }
+            return fallback
+        }
+        let defaults: [String: Double] = ["ink_w": 1.2, "ink_dark": 0.65, "ink_soft": 0.12, "saturation": 1.0, "contrast": 1.0,
+                                          "colors": 12, "min_area": 12, "cel_levels": 0, "smooth_passes": 2]
+        for (cues, changes) in lookRules where cues.contains(where: { words.contains($0) }) {
+            for (key, value) in changes {
+                if key.hasSuffix("*") {
+                    let k = String(key.dropLast()); r[k] = number(k, defaults[k] ?? 1) * value
+                } else if key.hasSuffix("+") {
+                    let k = String(key.dropLast()); r[k] = number(k, defaults[k] ?? 0) + value
+                } else {
+                    r[key] = value
+                }
+            }
+        }
+        r["colors"] = max(4, Int(number("colors", 12).rounded()))
+        r["cel_levels"] = max(0, Int(number("cel_levels", 0).rounded()))
+        r["smooth_passes"] = max(0, Int(number("smooth_passes", 2).rounded()))
+        r["round"] = Int(number("round", 1).rounded())
+        r["chaikin"] = Int(number("chaikin", 1).rounded())
+        if let path = look.samplePath, family != .ink, family != .blueprint, family != .chalk {
+            r["look_sample"] = ["path": path, "cols": look.cols, "rows": look.rows, "tile": look.tile, "name": look.name] as [String: Any]
+        }
+        return r
+    }
+
     /// The trace settings for a family (keys are read by the Blender script).
     public static func recipe(_ family: Family) -> [String: Any] {
         switch family {
@@ -119,7 +193,7 @@ public enum TrueTrace {
     }
 
     /// Traces `image` in Blender (background) and writes still, movie and project into `folder`.
-    public static func run(image: URL, family: Family, folder: URL, size: Int = 1920, seconds: Double = 6) async throws -> Result {
+    public static func run(image: URL, family: Family, look: Look? = nil, folder: URL, size: Int = 1920, seconds: Double = 6) async throws -> Result {
         let blender = BlenderStageAdapter.blenderPath
         guard FileManager.default.isExecutableFile(atPath: blender) else {
             throw PrismError.local("Blender wasn't found in /Applications. Install Blender to use True Trace.")
@@ -135,7 +209,7 @@ public enum TrueTrace {
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: scriptURL) }
 
-        let args: [String: Any] = ["image": image.path, "recipe": recipe(family), "still": still.path,
+        let args: [String: Any] = ["image": image.path, "recipe": recipe(family, look: look), "still": still.path,
                                    "movie": movieBase.path, "project": project.path, "size": size, "seconds": seconds]
         let (status, text) = try await runBlender(blender: blender, script: scriptURL, args: args, folder: folder)
         let files = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []

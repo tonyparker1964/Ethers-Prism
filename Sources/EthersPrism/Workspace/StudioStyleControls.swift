@@ -16,6 +16,12 @@ struct StudioStyle: Decodable, Identifiable {
     static let collections = ["Images", "3D", "Anime", "Donghua", "World", "Visions"]
 
     private static let directory = Bundle.module.resourceURL?.appendingPathComponent("StudioCatalog")
+
+    /// This look as True Trace needs it: words plus where its sample picture is.
+    var traceLook: TrueTrace.Look {
+        TrueTrace.Look(name: name, description: description, collection: collection,
+                       samplePath: Self.directory?.appendingPathComponent(atlas).path, cols: cols, rows: rows, tile: tile)
+    }
     static let catalog: [Self] = {
         guard let url = directory?.appendingPathComponent("styles.json"),
               let data = try? Data(contentsOf: url) else { return [] }
