@@ -219,6 +219,12 @@ struct DialsSection: View {
     @State private var commandStatus = ""
     @State private var commandFailed = false
 
+    private func clearCommands() {
+        commands = ""
+        commandStatus = ""
+        commandFailed = false
+    }
+
     private func applyCommands() {
         guard let session = model.current else { return }
         do {
@@ -247,18 +253,20 @@ struct DialsSection: View {
                         .font(.system(.body, design: .monospaced))
                         .frame(minHeight: 82, maxHeight: 120)
                         .accessibilityLabel("Dial commands")
-                    Button("Apply Commands", action: applyCommands)
-                        .disabled(commands.trimmed.isEmpty || dials.isEmpty)
+                    HStack {
+                        Button("Apply Commands", action: applyCommands)
+                            .disabled(commands.trimmed.isEmpty || dials.isEmpty)
+                        Button("Clear", action: clearCommands)
+                            .disabled(commands.isEmpty && commandStatus.isEmpty)
+                            .help("Clear the command text and feedback")
+                    }
                     if !commandStatus.isEmpty {
                         Text(commandStatus)
                             .font(.caption)
                             .foregroundStyle(commandFailed ? Color.red : Color.secondary)
                     }
                 }
-                .onChange(of: model.selectedID) { _ in
-                    commands = ""
-                    commandStatus = ""
-                }
+                .onChange(of: model.selectedID) { _ in clearCommands() }
                 if dials.isEmpty {
                     Text("Describe a goal and let the AI suggest dials, or add your own. Choosing the dials is part of the authorship.")
                         .font(.callout)
