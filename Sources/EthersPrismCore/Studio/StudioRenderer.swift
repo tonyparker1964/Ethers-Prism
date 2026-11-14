@@ -103,7 +103,9 @@ public enum StudioRenderer {
         img = moveToOrigin(img)
         if let c = edit.crop?.clamped, c != .full {
             let w = img.extent.width, h = img.extent.height
-            let rect = CGRect(x: c.x * w, y: (1 - c.y - c.height) * h, width: c.width * w, height: c.height * h).integral
+            // Round origin and size separately (`.integral` can add a pixel to a fractional crop).
+            let rect = CGRect(x: (c.x * w).rounded(), y: ((1 - c.y - c.height) * h).rounded(),
+                              width: (c.width * w).rounded(), height: (c.height * h).rounded())
             img = moveToOrigin(img.cropped(to: rect.intersection(img.extent)))
         }
         return img
