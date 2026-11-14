@@ -416,3 +416,54 @@ final class VersionTests: XCTestCase {
         XCTAssertEqual(dict["CFBundleVersion"] as? String, AppVersion.build)
     }
 }
+
+final class DialCommandTests: XCTestCase {
+    private let dials = [
+        Dial(name: "Resolution", lowPole: "720p", highPole: "4K", value: 0),
+        Dial(name: "Photo reveal", lowPole: "Ink", highPole: "Photo", value: 25)
+    ]
+
+    func testAppliesNamedValuesAndPreservesDialIdentity() throws {
+        let result = try DialCommands.apply(" resolution = 100\r\n\r\nPhoto reveal = 85.5", to: dials)
+        XCTAssertEqual(result.map(\.value), [100, 85.5])
+        XCTAssertEqual(result.map(\.id), dials.map(\.id))
+        XCTAssertEqual(try DialCommands.apply("Resolution = 50", to: dials)[1], dials[1])
+    }
+
+    func testRejectsInvalidBatches() {
+        for line in ["Unknown = 10", "Resolution = 101", "Photo reveal = nan", "Photo reveal 42"] {
+            XCTAssertThrowsError(try DialCommands.apply("Resolution = 100\n" + line, to: dials))
+        }
+    }
+}
+
+final class ImageReferenceTests: XCTestCase {
+    func testMemoryHandoffPreservesReferenceImageSupport() {
+        let comfy = ComfyUIImageProvider(settings: ComfyUISettings())
+        let wrapped: any ImageProvider = MemoryAwareImageProvider(inner: comfy, lmStudioURL: "http://127.0.0.1:1234")
+        XCTAssertTrue(wrapped.supportsReferenceImages)
+        XCTAssertFalse(MockImageProvider().supportsReferenceImages)
+    }
+
+    func testComfyWorkflowUsesTheUploadedImageAndDenoise() throws {
+        let reference = ImageReference(path: "/tmp/portrait.png")
+        let job = ImageJob(prompt: "Warm light", negative: "", quality: .render, seed: 42, reference: reference)
+        let graph = ComfyUIImageProvider.workflow(for: job, settings: ComfyUISettings(), uploadedReference: "portrait.png")
+        func node(_ id: String) throws -> [String: Any] {
+            try XCTUnwrap(graph[id] as? [String: Any])
+        }
+        XCTAssertEqual(try node("10")["class_type"] as? String, "LoadImage")
+        XCTAssertEqual(try (node("10")["inputs"] as? [String: Any])?["image"] as? String, "portrait.png")
+        XCTAssertEqual(try node("5")["class_type"] as? String, "VAEEncode")
+        XCTAssertEqual(try (node("3")["inputs"] as? [String: Any])?["denoise"] as? Double, 0.25)
+    }
+
+    func testReferenceSurvivesSessionRoundTripAndInvalidatesPreview() throws {
+        var session = Session(domainID: "image")
+        let original = session.workingState
+        session.imageReference = ImageReference(path: "/tmp/portrait.png")
+        let restored = try JSONDecoder().decode(Session.self, from: JSONEncoder().encode(session))
+        XCTAssertEqual(restored.workingState.imageReference, session.imageReference)
+        XCTAssertFalse(restored.workingState.generatesSame(as: original))
+    }
+}

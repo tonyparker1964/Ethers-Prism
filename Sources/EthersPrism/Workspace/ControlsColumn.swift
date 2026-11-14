@@ -9,6 +9,7 @@ struct ControlsColumn: View {
     var body: some View {
         Form {
             GoalSection()
+            if model.adapter.id == "linelogo" { GreasePencilStyles() }
             DialsSection()
             ConstraintsSection()
             PlaySection()
@@ -73,6 +74,31 @@ struct GoalSection: View {
                 if model.adapter.id == "i2v" {
                     StartImageRow()
                 }
+                if model.adapter.id == "linelogo", let session = model.current {
+                    let hasProject = FileManager.default.fileExists(atPath: model.drawingProject(for: session.id).path)
+                    Button(hasProject ? "Reopen Drawing in Blender" : "Open in Blender for Drawing") {
+                        model.openGreasePencilDrawing()
+                    }
+                    .disabled(model.creatingDrawing)
+                    if GreasePencilLogoAdapter.imagePath(from: session.goal) != nil {
+                        Button("Photo Ultra HD 4K Reveal") { model.renderPhotoReveal4K() }
+                            .help("Apply the photo reveal preset and render a 4K MP4.")
+                        Button("Multi-Shot Auto Trace") {
+                            model.openGreasePencilDrawing(automaticTrace: true, multiShot: true)
+                        }
+                        .disabled(model.creatingDrawing)
+                        Button("Auto Trace in Blender") { model.openGreasePencilDrawing(automaticTrace: true) }
+                            .disabled(model.creatingDrawing)
+                    }
+                    Button("Create Walk Cycle…") { model.chooseWalkPoses() }
+                        .disabled(model.creatingDrawing)
+                    Button("Import Blender Animation…") { model.importGreasePencilAnimation() }
+                    Text("Draw and animate in Blender. Use Render → Render Animation, then import the movie here.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if model.adapter.id == "image" && model.imageProviderKind == "comfyui" {
+                    ReferenceImageControls()
+                }
                 HStack {
                     if model.adapter.id == "i2v" {
                         Button { chooseFile(types: StartImage.extensions, keepDescription: true) } label: {
@@ -101,7 +127,7 @@ struct GoalSection: View {
                     Button {
                         Task { await model.suggestDials() }
                     } label: {
-                        Label((model.current?.dials.isEmpty ?? true) ? "Suggest Dials" : "Re-suggest Dials",
+                        Label(model.adapter.id == "image" && model.current?.imageReference != nil ? "Preview Variation" : ((model.current?.dials.isEmpty ?? true) ? "Suggest Dials" : "Re-suggest Dials"),
                               systemImage: "sparkles")
                     }
                     .disabled(model.suggesting)
@@ -146,6 +172,38 @@ struct GoalSection: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let words = keepDescription ? StartImage.split(model.current?.goal ?? "").description : ""
         model.goalBinding.wrappedValue = words.isEmpty ? url.path : "\(url.path)\n\(words)"
+    }
+}
+
+struct ReferenceImageControls: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button("Choose Reference Image…") {
+                let panel = NSOpenPanel()
+                panel.allowedContentTypes = [.image]
+                guard panel.runModal() == .OK, let url = panel.url else { return }
+                model.update { $0.imageReference = ImageReference(path: url.path) }
+            }
+            if let reference = model.current?.imageReference {
+                HStack {
+                    Text(URL(fileURLWithPath: reference.path).lastPathComponent)
+                        .lineLimit(1)
+                    Spacer()
+                    Button("Remove") { model.update { $0.imageReference = nil } }
+                }
+                let denoise = Binding(
+                    get: { model.current?.imageReference?.denoise ?? 0.25 },
+                    set: { value in model.update { $0.imageReference?.denoise = value } }
+                )
+                Slider(value: denoise, in: 0.05...1, step: 0.05) {
+                    Text("Denoise")
+                }
+                Text("Denoise \(reference.denoise, format: .number.precision(.fractionLength(2))) · Lower values stay closer to the reference.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
@@ -213,13 +271,187 @@ struct StartImageRow: View {
     }
 }
 
+private struct GreasePencilStyles: View {
+    @EnvironmentObject var model: AppModel
+
+    private enum Style: String, CaseIterable {
+        case photo = "Photo Reveal"
+        case ink = "Draw-On"
+        case mixed = "Ink + Photo"
+        case anime = "Anime"
+
+        var values: [String: Double] {
+            switch self {
+            case .photo: return ["Photo reveal": 100, "Stroke opacity": 0, "Glow": 0, "Reveal easing": 65]
+            case .ink: return ["Photo reveal": 0, "Stroke opacity": 100, "Glow": 0, "Line weight": 20, "Reveal easing": 0]
+            case .anime:
+                return ["Photo reveal": 100, "Stroke opacity": 35, "Glow": 0,
+                        "Line weight": 8, "Detail": 60, "Edge sensitivity": 45, "Path precision": 80,
+                        "Ink fidelity": 85, "Ink": 0, "Contrast": 62, "Saturation": 68,
+                        "Timing": 50, "Stroke stability": 100, "Reveal easing": 45]
+            case .mixed: return ["Photo reveal": 100, "Stroke opacity": 25, "Glow": 0, "Line weight": 10, "Reveal easing": 65]
+            }
+        }
+    }
+
+    // Exposure, contrast, saturation, warmth, glow and stroke opacity.
+    private let visions: [(name: String, values: [Double])] = [
+        ("Kemet Starpilot", [45, 58, 56, 70, 12, 8]),
+        ("Retro Afrofuturist Epic", [49, 46, 43, 65, 8, 5]),
+        ("Celestial Third-Eye Portrait", [51, 59, 74, 41, 24, 16]),
+        ("Arcane Library Cinema", [39, 72, 59, 79, 32, 18]),
+        ("Sacred Geometry Cosmos", [44, 66, 68, 43, 25, 31]),
+        ("Golden Portal Epic", [53, 50, 58, 72, 20, 7]),
+        ("Cosmic Pilgrim", [41, 57, 55, 35, 18, 8]),
+        ("Celestial Clockwork Icon", [43, 72, 67, 51, 23, 27]),
+        ("Nubian Couture Noir", [41, 76, 44, 59, 4, 3]),
+        ("Pharaonic Astronaut", [50, 68, 56, 61, 26, 12]),
+        ("Animal Couture Runway", [56, 56, 69, 52, 0, 0]),
+        ("Sacred Light Chiaroscuro", [38, 75, 36, 77, 30, 14]),
+        ("Surreal Minimal Sculpture", [52, 48, 28, 53, 0, 0]),
+        ("Silent Monastery", [52, 39, 24, 43, 0, 0]),
+        ("Mythic Vessel Surrealism", [51, 54, 67, 48, 16, 12]),
+        ("Desert Oracle Film Still", [53, 56, 47, 75, 6, 5])
+    ]
+
+    private let threeD: [(name: String, values: [Double])] = [
+        ("Cinematic 3D Animation", [51, 62, 65, 54, 8, 8]),
+        ("Claymation", [53, 44, 50, 61, 0, 5]),
+        ("Low-Poly 3D", [50, 68, 60, 50, 0, 23]),
+        ("Stop-Motion Puppet", [49, 55, 55, 64, 0, 6]),
+        ("Cel-Shaded 3D", [52, 65, 75, 50, 0, 40]),
+        ("Isometric Diorama", [56, 52, 65, 57, 0, 13]),
+        ("Photorealistic CGI", [50, 55, 51, 50, 0, 0]),
+        ("Designer Vinyl Toy", [55, 57, 74, 51, 4, 0]),
+        ("Voxel Art", [52, 68, 80, 47, 0, 28]),
+        ("Glass and Crystal 3D", [57, 68, 49, 30, 22, 9]),
+        ("Sculpted Metal 3D", [47, 75, 24, 45, 10, 15]),
+        ("Architectural Clay Render", [56, 51, 0, 52, 0, 10]),
+        ("Needle Felt", [54, 42, 58, 60, 0, 4]),
+        ("Origami 3D", [56, 63, 55, 53, 0, 25]),
+        ("Knitted Yarn", [52, 47, 61, 66, 0, 7]),
+        ("Toy Brick Build", [56, 60, 82, 51, 4, 13]),
+        ("Porcelain Figurine", [58, 56, 43, 42, 5, 4]),
+        ("Wood Carving", [47, 64, 41, 79, 0, 23]),
+        ("Hologram", [48, 65, 67, 16, 45, 60]),
+        ("Marble Statue", [57, 62, 8, 48, 0, 11]),
+        ("Balloon Inflatable", [59, 49, 88, 53, 7, 0])
+    ]
+
+    private func studioDials(_ values: [Double]) -> [String: Double] {
+        let names = ["Exposure", "Contrast", "Saturation", "Warmth", "Glow", "Stroke opacity"]
+        var dials = Style.mixed.values
+        for (name, value) in zip(names, values) { dials[name] = value }
+        dials["Ink fidelity"] = 80
+        return dials
+    }
+
+    var body: some View {
+        Section("Grease Pencil") {
+            ForEach(Style.allCases, id: \.self) { style in
+                Button {
+                    model.applyGreasePencilStyle(style.values)
+                } label: {
+                    HStack {
+                        sample(style)
+                            .frame(width: 76, height: 48)
+                            .accessibilityHidden(true)
+                        Text(style.rawValue)
+                        Spacer()
+                        if style.values.allSatisfy({ name, value in
+                            model.current?.dials.first { $0.name.lowercased() == name.lowercased() }?.value == value
+                        }) {
+                            Image(systemName: "checkmark").accessibilityLabel("Applied")
+                        }
+                    }
+                }
+                .buttonStyle(.borderless)
+            }
+            studioMenu("Visions Styles", presets: visions)
+            studioMenu("3D Styles", presets: threeD)
+            Text("Select a sample to update the dials. Play Preview to see the reveal.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func studioMenu(_ title: String, presets: [(name: String, values: [Double])]) -> some View {
+        Menu(title) {
+            ForEach(presets.indices, id: \.self) { index in
+                let preset = presets[index]
+                Button(preset.name) { model.applyGreasePencilStyle(studioDials(preset.values)) }
+            }
+        }
+    }
+
+    private func sample(_ style: Style) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6).fill(.black)
+            Image(systemName: style == .ink ? "scribble" : "mountain.2.fill")
+                .font(.system(size: 25))
+                .foregroundStyle(style == .ink ? Color.white : (style == .anime ? Color.pink : Color.orange))
+            if style == .mixed || style == .anime {
+                Image(systemName: "mountain.2")
+                    .font(.system(size: 25))
+                    .foregroundStyle(.white)
+            }
+        }
+    }
+}
+
 struct DialsSection: View {
     @EnvironmentObject var model: AppModel
+    @State private var commands = ""
+    @State private var commandStatus = ""
+    @State private var commandFailed = false
+
+    private func clearCommands() {
+        commands = ""
+        commandStatus = ""
+        commandFailed = false
+    }
+
+    private func applyCommands() {
+        guard let session = model.current else { return }
+        do {
+            let updated = try DialCommands.apply(commands, to: session.dials)
+            let count = zip(session.dials, updated).filter { $0.0.value != $0.1.value }.count
+            if count > 0 {
+                model.updateSession(session.id) { $0.dials = updated }
+                model.dialsChanged()
+            }
+            commandFailed = false
+            commandStatus = count == 0 ? "The dials already have these values." : "Updated \(count) \(count == 1 ? "dial" : "dials")."
+        } catch {
+            commandFailed = true
+            commandStatus = error.localizedDescription
+        }
+    }
 
     var body: some View {
         Section("Dials") {
             Group {
                 let dials = model.current?.dials ?? []
+                DisclosureGroup("Paste Dial Commands") {
+                    Text("Paste one command per line using Dial name = value (0–100).")
+                        .font(.caption).foregroundStyle(.secondary)
+                    TextEditor(text: $commands)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 82, maxHeight: 120)
+                        .accessibilityLabel("Dial commands")
+                    HStack {
+                        Button("Apply Commands", action: applyCommands)
+                            .disabled(commands.trimmed.isEmpty || dials.isEmpty)
+                        Button("Clear", action: clearCommands)
+                            .disabled(commands.isEmpty && commandStatus.isEmpty)
+                            .help("Clear the command text and feedback")
+                    }
+                    if !commandStatus.isEmpty {
+                        Text(commandStatus)
+                            .font(.caption)
+                            .foregroundStyle(commandFailed ? Color.red : Color.secondary)
+                    }
+                }
+                .onChange(of: model.selectedID) { _ in clearCommands() }
                 if dials.isEmpty {
                     Text("Describe a goal and let the AI suggest dials, or add your own. Choosing the dials is part of the authorship.")
                         .font(.callout)
@@ -390,7 +622,7 @@ struct PlaySection: View {
                             .help("Paste this into Claude so it can fix the script")
                     }
                 } else if model.adapter.id == "linelogo" {
-                    Text("Previews are 2-second, low-resolution clips and take a few seconds; Render Full Quality makes the full-length 720p clip. Set the dials, then press Preview.")
+                    Text("Suggest Dials adds any missing controls while keeping your settings. Resolution selects 720p, 1080p, 1440p, or 4K. Framing switches to portrait at 50. Photo reveal blends in the source image. Previews are 2 seconds at low resolution.")
                         .font(.caption).foregroundStyle(.secondary)
                 } else if model.adapter.capabilities.needsVideoProvider {
                     Text("Video previews take a few minutes on a Mac, so set the dials first, then press Preview. Starting another preview stops the one in progress.")

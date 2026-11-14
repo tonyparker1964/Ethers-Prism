@@ -55,7 +55,9 @@ Turns any picture into a 3D model, renders it, and saves the model as a GLB. **R
 
 ## Line Logo (Grease Pencil)
 
-Blender traces a logo image into Grease Pencil lines that draw themselves on, as an MP4. Leave the goal empty to use the Ether Frequency emblem (`Examples/ether-frequency-emblem.png`), or press **Choose Logo…**. Lines keep the logo's own colors (or glow white), draw from the centre outward, boil slightly like hand-drawn animation, and can hold on 2s or 3s; glow lines and bloom make it neon. Dials: Draw speed, Line weight, Wobble, Timing, Glow, Detail, Ink, Camera push, Length. Previews are 2 seconds at 640×360 and take a few seconds; full renders are 720p, 3–12 seconds.
+Blender traces a logo image into Grease Pencil lines that draw themselves on, as an MP4. Leave the goal empty to use the Ether Frequency emblem (`Examples/ether-frequency-emblem.png`), or press **Choose Logo…**. Lines keep the logo's own colors (or glow white), draw from the centre outward, boil slightly like hand-drawn animation, and can hold on 2s or 3s; glow lines and bloom make it neon. Dials: Draw speed, Line weight, Wobble, Timing, Glow, Detail, Ink, Camera push, Length. Previews are 2 seconds at 640×360 (360×640 in portrait). Full MP4 renders run 3–12 seconds. Set **Resolution** to 100 for 3840×2160, or raise **Framing** to 50 or higher for 2160×3840. The intermediate resolution stops are 1080p and 1440p. Use **Suggest Dials** to add controls to an existing session while keeping its settings.
+
+Raise **Trace resolution**, **Micro-detail**, **Edge sensitivity**, and **Path precision** to capture finer contours. **Photo reveal** progressively exposes the original image behind the strokes. **Texture fidelity** adjusts texture sampling, and **Ink fidelity** blends traced colors toward the source tones. Use exposure, contrast, saturation, warmth, and photo light falloff to grade the result. Lower **Timing** to 0 for a drawing on every frame, and adjust **Stroke stability**, **Reveal easing**, and **Stroke opacity** for the motion and overlay. Higher anti-aliasing and tracing settings increase render time.
 
 ## Blender Script (from Claude)
 

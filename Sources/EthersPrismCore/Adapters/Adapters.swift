@@ -182,6 +182,22 @@ public struct ImageAdapter: DomainAdapter {
 
     private func run(_ request: CompiledRequest, _ providers: ProviderSet) async throws -> Generated {
         guard let imageProvider = providers.image else { throw PrismError.missingImageProvider }
+        if let reference = request.input.state.imageReference {
+            guard imageProvider.supportsReferenceImages else {
+                throw PrismError.comfy("choose ComfyUI on this Mac to use a reference image.")
+            }
+            let goal = request.input.state.goal.trimmed
+            let prompt = goal.isEmpty ? "Preserve the reference image's composition and details." : goal
+            let constraints = request.input.state.constraints.filter(\.isActive)
+            let positive = ([prompt] + constraints.filter { $0.kind != .mustAvoid }.map(\.text)).joined(separator: ", ")
+            let negative = constraints.filter { $0.kind == .mustAvoid }.map(\.text).joined(separator: ", ")
+            let result = try await imageProvider.generate(
+                ImageJob(prompt: positive, negative: negative, quality: request.input.quality,
+                         seed: request.seed, reference: reference))
+            return Generated(output: Output(kind: .image, imagePrompt: positive, provider: imageProvider.name,
+                                            model: imageProvider.model, agent: "Reference image + Renderer"),
+                             asset: result.data, assetExtension: result.fileExtension)
+        }
         let director = providers.text(for: .artDirector)
         let p = Self.parsePrompt(try await director.complete(request.text))
         let avoid = request.input.state.constraints.filter { $0.isActive && $0.kind == .mustAvoid }.map(\.text)

@@ -60,24 +60,36 @@ public struct Output: Codable, Hashable, Sendable {
 }
 
 /// Everything that decides what gets generated. Two equal states compile to the same request.
+public struct ImageReference: Codable, Hashable, Sendable {
+    public var path: String
+    public var denoise: Double
+
+    public init(path: String, denoise: Double = 0.25) {
+        self.path = path
+        self.denoise = denoise
+    }
+}
+
 public struct WorkingState: Codable, Hashable, Sendable {
     public var goal: String
     public var domainID: String
     public var dials: [Dial]
     public var constraints: [Constraint]
+    public var imageReference: ImageReference?
 
-    public init(goal: String, domainID: String, dials: [Dial], constraints: [Constraint]) {
+    public init(goal: String, domainID: String, dials: [Dial], constraints: [Constraint], imageReference: ImageReference? = nil) {
         self.goal = goal
         self.domainID = domainID
         self.dials = dials
         self.constraints = constraints
+        self.imageReference = imageReference
     }
 
     /// Equality that ignores lock state, which never changes what is generated.
     public func generatesSame(as other: WorkingState) -> Bool {
         func strip(_ d: [Dial]) -> [Dial] { d.map { var x = $0; x.locked = false; x.value = x.value.rounded(); return x } }
         return goal.trimmed == other.goal.trimmed && domainID == other.domainID
-            && strip(dials) == strip(other.dials) && constraints == other.constraints
+            && strip(dials) == strip(other.dials) && constraints == other.constraints && imageReference == other.imageReference
     }
 }
 
@@ -117,6 +129,7 @@ public struct Session: Codable, Identifiable, Hashable, Sendable {
     public var domainID: String
     public var dials: [Dial]
     public var constraints: [Constraint]
+    public var imageReference: ImageReference?
     public var snapshots: [Snapshot]
     public var currentSnapshotID: UUID?
     public var templateID: UUID?
@@ -143,12 +156,13 @@ public struct Session: Codable, Identifiable, Hashable, Sendable {
     }
 
     public var workingState: WorkingState {
-        get { WorkingState(goal: goal, domainID: domainID, dials: dials, constraints: constraints) }
+        get { WorkingState(goal: goal, domainID: domainID, dials: dials, constraints: constraints, imageReference: imageReference) }
         set {
             goal = newValue.goal
             domainID = newValue.domainID
             dials = newValue.dials
             constraints = newValue.constraints
+            imageReference = newValue.imageReference
         }
     }
 
