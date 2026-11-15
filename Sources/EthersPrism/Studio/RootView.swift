@@ -18,7 +18,7 @@ struct RootView: View {
             }
             page
                 // Never let a wide page push the PRISM sidebar off the window.
-                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .clipped()
                 .id(studio.section == .create ? "create" : (studio.section.studioTab != nil ? "studio" : studio.section.rawValue))
                 .transition(.opacity)

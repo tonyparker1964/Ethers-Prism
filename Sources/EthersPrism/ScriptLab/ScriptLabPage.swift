@@ -87,9 +87,31 @@ struct ScriptToolbar: View {
     @EnvironmentObject var auto: AutoImportController
 
     var body: some View {
-        HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
+            // Row 1: run controls, always visible.
+            HStack(spacing: 6) {
+                if lab.isRunning {
+                    ProgressView().controlSize(.small)
+                    Button("Stop") { lab.stop() }.keyboardShortcut(".", modifiers: .command)
+                } else {
+                    Button { lab.run(video: false) } label: { Label("Run", systemImage: "play.fill") }
+                        .buttonStyle(PrismToolButtonStyle(active: true))
+                        .keyboardShortcut(.return, modifiers: .command).help("Run: the finished frame (⌘↩)")
+                    Button { lab.run(video: true) } label: { Label("Video", systemImage: "film") }
+                        .keyboardShortcut(.return, modifiers: [.command, .shift]).help("Render the animation (⇧⌘↩)")
+                }
+                Spacer(minLength: 4)
+                Button { lab.copyForClaude() } label: { Image(systemName: "sparkles") }
+                    .help("Copy for Claude: the script plus the brush library reference")
+                Button { lab.pasteFromClaude() } label: { Image(systemName: "doc.on.clipboard") }
+                    .help("Paste a script from Claude")
+                Button { lab.openInBlender() } label: { Image(systemName: "cube") }
+                    .help("Open in Blender to keep drawing by hand")
+            }
+            // Row 2: the script and what it paints from.
+            HStack(spacing: 6) {
             TextField("Script name", text: $lab.name)
-                .textFieldStyle(.roundedBorder).frame(width: 180)
+                .textFieldStyle(.roundedBorder).frame(minWidth: 90, maxWidth: 170)
             if lab.dirty { Circle().fill(PrismTheme.teal).frame(width: 6, height: 6).help("Not saved") }
             Button { lab.save() } label: { Image(systemName: "square.and.arrow.down") }
                 .keyboardShortcut("s", modifiers: .command).help("Save (⌘S)")
@@ -101,26 +123,12 @@ struct ScriptToolbar: View {
                 }
             } label: {
                 Label(lab.picture?.fileName ?? "Picture: none", systemImage: "photo")
-                    .lineLimit(1)
+                    .lineLimit(1).truncationMode(.middle).frame(maxWidth: 150)
             }
             .menuStyle(.borderlessButton).fixedSize()
             .help("The picture your script paints from (IMAGE)")
             snippetsMenu
-            Spacer()
-            Button { lab.copyForClaude() } label: { Image(systemName: "sparkles") }
-                .help("Copy for Claude: the script plus the brush library reference")
-            Button { lab.pasteFromClaude() } label: { Image(systemName: "doc.on.clipboard") }
-                .help("Paste a script from Claude")
-            Button { lab.openInBlender() } label: { Image(systemName: "cube") }
-                .help("Open in Blender to keep drawing by hand")
-            if lab.isRunning {
-                ProgressView().controlSize(.small)
-                Button("Stop") { lab.stop() }.keyboardShortcut(".", modifiers: .command)
-            } else {
-                Button { lab.run(video: false) } label: { Label("Run", systemImage: "play.fill") }
-                    .keyboardShortcut(.return, modifiers: .command).help("Run: the finished frame (⌘↩)")
-                Button { lab.run(video: true) } label: { Label("Video", systemImage: "film") }
-                    .keyboardShortcut(.return, modifiers: [.command, .shift]).help("Render the animation (⇧⌘↩)")
+            Spacer(minLength: 0)
             }
         }
         .buttonStyle(PrismToolButtonStyle())

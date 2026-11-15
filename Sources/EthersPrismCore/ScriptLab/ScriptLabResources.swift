@@ -119,49 +119,66 @@ KINDS = {
     "bristle":    ("bristle",    "radius",  0.3,   0.95,    0.0,      "LINE"),
     "oil":        ("bristle",    "radius",  0.25,  1.0,     0.0,      "LINE"),
     "dry":        ("dry",        "radius",  0.3,   0.9,     0.0,      "LINE"),
-    "wash":       ("wash",       "radius",  0.15,  0.35,    0.6,      "LINE"),
-    "watercolor": ("watercolor", "radius",  0.2,   0.55,    0.4,      "LINE"),
+    "wash":       ("wash",       "radius",  0.15,  0.6,     0.5,      "LINE"),
+    "watercolor": ("watercolor", "radius",  0.2,   0.8,     0.3,      "LINE"),
     "airbrush":   ("solid",      "opacity", 0.0,   0.25,    0.9,      "LINE"),
     "dots":       ("solid",      "none",    0.0,   1.0,     0.0,      "DOTS"),
     "squares":    ("solid",      "none",    0.0,   1.0,     0.0,      "BOX"),
 }
 
 
-def texture_pixels(kind, w=256, h=64, seed=7):
-    """A brush texture as an h×w×4 array (white, alpha carries the mark). x runs along the stroke."""
+def texture_pixels(kind, w=256, h=64, seed=7, rgb=(1.0, 1.0, 1.0)):
+    """A brush texture as an h×w×4 array: colour `rgb` (sRGB 0…1), alpha carries the mark. x runs along the stroke.
+
+    Blender colours a textured stroke from the texture itself, so each colour of a textured brush gets
+    its own tinted copy (see _material_for)."""
     rng = np.random.default_rng(seed)
     y = np.linspace(-1, 1, h)[:, None]
-    x = np.linspace(0, 1, w)[None, :]
-    edge = np.clip(1 - np.abs(y) ** 4, 0, 1)                       # soft across the stroke
-    a = np.ones((h, w)) * edge
+    edge = np.clip(1 - np.abs(y) ** 6, 0, 1) * np.ones((1, w))
 
-    def smooth_rows(v, k):
+    def sm(v, k):
         ker = np.ones(k) / k
         return np.apply_along_axis(lambda r: np.convolve(np.r_[r[-k:], r, r[:k]], ker, "same")[k:-k], 1, v)
 
     if kind == "solid":
         a = np.clip(1 - np.abs(y) ** 12, 0, 1) * np.ones((1, w))
     elif kind == "pencil":
-        a = edge * (0.55 + 0.45 * rng.random((h, w)))
+        a = edge * (0.7 + 0.3 * rng.random((h, w)))
     elif kind == "chalk":
-        a = edge * (rng.random((h, w)) > 0.35)
+        a = edge * np.where(rng.random((h, w)) > 0.3, 1.0, 0.15)
     elif kind == "charcoal":
-        g = smooth_rows(rng.random((h, w)), 9)
-        a = edge * np.clip((g - 0.3) * 2.2, 0, 1)
+        a = edge * np.clip(0.35 + (sm(rng.random((h, w)), 9) - 0.5) * 3, 0.15, 1)
     elif kind in ("bristle", "dry"):
-        rows = rng.random((h, 1))                                   # one value per bristle
-        streak = smooth_rows(rng.random((h, w)), 31) * 0.5 + rows * 0.7
-        a = edge * np.clip(streak, 0, 1)
+        streak = np.clip(0.8 + (sm(rng.random((h, w)), 31) - 0.5) * 1.2 + (rng.random((h, 1)) - 0.5) * 0.6, 0.3, 1)
+        a = edge * streak
         if kind == "dry":                                           # broken, scratchy
-            a = a * (smooth_rows(rng.random((h, w)), 15) > 0.45)
-    elif kind in ("wash", "watercolor"):
-        low = smooth_rows(rng.random((h, w)), 41)
-        body = 0.55 + 0.35 * (low - low.mean()) / (low.std() + 1e-6) * 0.3
-        rim = np.exp(-((np.abs(y) - 0.82) ** 2) / 0.01) * (0.6 if kind == "watercolor" else 0.25)
-        a = np.clip(np.clip(1 - np.abs(y) ** 2.5, 0, 1) * body + rim, 0, 1)
+            a = a * np.where(sm(rng.random((h, w)), 15) > 0.42, 1.0, 0.1)
+    else:                                                           # wash, watercolor
+        low = sm(rng.random((h, w)), 41)
+        body = np.clip(0.8 + (low - 0.5) * 1.5, 0.5, 1)
+        rim = np.exp(-((np.abs(y) - 0.85) ** 2) / 0.008) * (0.5 if kind == "watercolor" else 0.2)
+        a = np.clip(np.clip(1 - np.abs(y) ** 3, 0, 1) * body + rim, 0, 1)
     out = np.ones((h, w, 4), dtype=np.float32)
+    out[..., 0], out[..., 1], out[..., 2] = rgb
     out[..., 3] = np.clip(a, 0, 1)
     return out
+
+
+def quantize_colors(colors, n=24, seed=1):
+    """Maps many colours to at most n shared ones (k-means). Returns a list of "#rrggbb", one per input."""
+    arr = np.asarray([_hex(c) for c in colors], dtype=np.float32)
+    uniq = np.unique(np.round(arr * 255).astype(int), axis=0)
+    if len(uniq) <= n:
+        return [color(tuple(c)) for c in arr]
+    rng = np.random.default_rng(seed)
+    cent = arr[rng.choice(len(arr), n, replace=False)]
+    for _ in range(10):
+        lab = ((arr[:, None, :] - cent[None, :, :]) ** 2).sum(-1).argmin(1)
+        for k in range(n):
+            m = arr[lab == k]
+            if len(m):
+                cent[k] = m.mean(0)
+    return [color(tuple(cent[k])) for k in lab]
 
 
 # --------------------------------------------------------------------------- stroke planning (no Blender)
@@ -487,32 +504,50 @@ def brush(name, kind="ink", color="#111111", size=6, opacity=None, taper=None, j
                 setattr(g, prop, float(spacing))
             except Exception:
                 pass
-    if tex != "solid":
-        img = _texture_image(tex)
-        if img is not None:
-            try:
-                g.stroke_style = "TEXTURE"
-                g.stroke_image = img
-                g.mix_stroke_factor = 0.0
-            except Exception as e:
-                print("PRISM-NOTE: texture not applied:", e)
     S.ob.data.materials.append(m)
     b = {"name": name, "kind": kind, "index": len(S.ob.data.materials) - 1, "color": color, "size": float(size),
+         "texture": tex, "material": m, "by_color": {},
          "opacity": k_opa if opacity is None else float(opacity), "taper": k_taper if taper is None else float(taper),
          "pressure": pressure, "jitter": float(jitter), "softness": k_soft if softness is None else float(softness)}
     S.brushes[name] = b
     return b
 
 
-def _texture_image(tex):
+def _material_for(b, col):
+    """The material slot for a stroke of brush b in colour col. Solid brushes share one material and
+    take the colour per point; textured brushes get a tinted copy per colour (Blender colours textured
+    strokes from the texture)."""
+    if b["texture"] == "solid":
+        return b["index"]
+    key = color(col)
+    if key in b["by_color"]:
+        return b["by_color"][key]
+    m = b["material"].copy()
+    m.name = "Brush %s %s" % (b["name"], key)
+    img = _texture_image(b["texture"], _hex(key))
+    g = m.grease_pencil
+    try:
+        if img is not None:
+            g.stroke_style = "TEXTURE"
+            g.stroke_image = img
+            g.mix_stroke_factor = 0.0
+        g.color = (*to_linear(key), 1.0)
+    except Exception as e:
+        print("PRISM-NOTE: texture not applied:", e)
+    S.ob.data.materials.append(m)
+    b["by_color"][key] = len(S.ob.data.materials) - 1
+    return b["by_color"][key]
+
+
+def _texture_image(tex, rgb=(1.0, 1.0, 1.0)):
     if isinstance(tex, str) and tex not in TEXTURES:
         try:
             return bpy.data.images.load(tex, check_existing=True)
         except Exception:
             return None
-    px = texture_pixels(tex)
+    px = texture_pixels(tex, rgb=rgb)
     h, w = px.shape[:2]
-    img = bpy.data.images.new("Brush texture " + tex, w, h, alpha=True)
+    img = bpy.data.images.new("Brush texture %s %s" % (tex, color(rgb)), w, h, alpha=True)
     img.pixels.foreach_set(px[::-1].reshape(-1).astype(np.float32))     # Blender rows run bottom-up
     img.pack()
     return img
@@ -533,9 +568,15 @@ def strokes(specs):
     """Adds many strokes at once. Each spec: brush, points (pixels), and optional size, color,
     opacity, pressure (list), fill (True for a filled closed shape), close (True)."""
     _need_blender()
-    specs = [s for s in specs if len(s["points"]) >= 1]
+    specs = [dict(s) for s in specs if len(s["points"]) >= 1]
     if not specs:
         return
+    # Textured brushes need a material per colour: share at most 24 colours per brush.
+    for name in {s["brush"]["name"] for s in specs if s["brush"]["texture"] != "solid"}:
+        group = [s for s in specs if s["brush"]["name"] == name]
+        q = quantize_colors([s.get("color", s["brush"]["color"]) for s in group], n=24)
+        for s, c in zip(group, q):
+            s["color"] = c
     d = S.drawing
     n0 = len(d.attributes["position"].data) if "position" in d.attributes else 0
     c0 = len(d.strokes)
@@ -563,7 +604,8 @@ def strokes(specs):
         rad.append(r)
         opa.append(o)
         c = to_linear(s.get("color", b["color"]))
-        col.append(np.tile((*c, 1.0), (n, 1)))
+        # Solid brushes take colour per point; textured ones from their tinted material (alpha 0 = no override).
+        col.append(np.tile((*c, 1.0 if b["texture"] == "solid" else 0.0), (n, 1)))
     d.add_strokes(sizes)
     total = n0 + sum(sizes)
     P = np.concatenate(pos).reshape(-1)
@@ -582,7 +624,7 @@ def strokes(specs):
         a.data.foreach_set(key, buf)
     for i, s in enumerate(specs):
         st = d.strokes[c0 + i]
-        st.material_index = s["brush"]["index"]
+        st.material_index = _material_for(s["brush"], s.get("color", s["brush"]["color"]))
         closed = bool(s.get("close") or s.get("fill"))
         st.cyclic = closed
         if s.get("fill"):
@@ -719,7 +761,7 @@ def draw_on(seconds=None, start=0.0, order="layers"):
         m = S.ob.modifiers.new("Draw On " + lay.name, "GREASE_PENCIL_BUILD")
         for prop, val in (("mode", "SEQUENTIAL"), ("transition", "GROW"), ("time_mode", "FRAMES"),
                           ("start_delay", float(start * S.fps + (0 if order == "together" else i * each))),
-                          ("length", float(each)), ("layer_filter", lay.name)):
+                          ("length", float(each)), ("tree_node_filter", lay.name)):
             try:
                 setattr(m, prop, val)
             except Exception as e:
@@ -782,7 +824,7 @@ def modifier(kind, **props):
 __all__ = ["canvas", "layer", "brush", "stroke", "strokes", "line", "circle", "ellipse", "rect", "arc", "polygon",
            "color", "mix", "lighten", "darken", "hsv", "gradient", "palette_from", "picture_palette", "load_picture",
            "paint", "ink", "draw_on", "boil", "glow", "shadow", "effect", "modifier", "smooth_path", "taper_profile",
-           "IMAGE", "KINDS", "TEXTURES", "S", "np", "math", "random", "plan_paint", "plan_ink", "jitter_path", "to_linear"]
+           "IMAGE", "KINDS", "TEXTURES", "S", "np", "math", "random", "plan_paint", "plan_ink", "jitter_path", "to_linear", "quantize_colors"]
 """###
 
     /// Built-in templates: (name, code).
