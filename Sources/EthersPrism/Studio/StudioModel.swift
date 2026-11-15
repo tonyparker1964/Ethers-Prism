@@ -6,7 +6,7 @@ import EthersPrismCore
 
 /// The sections of the PRISM sidebar.
 enum AppSection: String, CaseIterable, Identifiable {
-    case create, importPaste, autoImport, library, edit, color, realism, upscale, presets, export
+    case create, importPaste, autoImport, library, edit, color, realism, upscale, scriptLab, presets, export
     var id: String { rawValue }
 
     var title: String {
@@ -19,6 +19,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .color: return "Color Studio"
         case .realism: return "Realism Studio"
         case .upscale: return "Upscale Studio"
+        case .scriptLab: return "Script Lab"
         case .presets: return "Presets"
         case .export: return "Export"
         }
@@ -34,6 +35,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .color: return "paintpalette"
         case .realism: return "camera.aperture"
         case .upscale: return "arrow.up.left.and.arrow.down.right"
+        case .scriptLab: return "chevron.left.forwardslash.chevron.right"
         case .presets: return "square.stack.3d.up"
         case .export: return "square.and.arrow.up"
         }

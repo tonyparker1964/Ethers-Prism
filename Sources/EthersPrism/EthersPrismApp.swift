@@ -19,6 +19,7 @@ struct EthersPrismApp: App {
                 .environmentObject(model)
                 .environmentObject(model.autoImport)
                 .environmentObject(model.studio)
+                .environmentObject(model.scriptLab)
                 .frame(minWidth: 1180, minHeight: 720)
                 .onAppear { NSApplication.shared.activate(ignoringOtherApps: true) }
         }

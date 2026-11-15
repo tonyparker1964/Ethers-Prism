@@ -129,6 +129,27 @@ In **Text**, **Image**, **3D Stage**, **3D from Image** and **True Trace**, the 
 - **3D Stage:** the 3D tab's looks become finishes on your model (**Apply This Finish to the Model**): clay, felt, vinyl, porcelain, marble, wood, glass, metal and more, with a matching backdrop. Other looks are dimmed.
 - **True Trace** and **3D from Image:** 2D looks are drawn by Grease Pencil (**True Trace in This Look**) and 3D looks are sculpted in Blender (**Build This Look in 3D**), from the field's image (see True Trace above).
 
+## Script Lab (brushes and colours from a script)
+
+Sidebar → **Script Lab**: write a few lines of Python, press **⌘↩** (finished frame) or **⇧⌘↩** (video), and Blender draws it in Grease Pencil.
+
+```python
+canvas(1080, 1080, background="#f3ede1", seconds=4)
+gold = brush("Gold", kind="marker", color="#e8b53a", size=14)
+ink  = brush("Ink", kind="ink", color="#151515", size=6)
+circle(gold, (540, 400), 180)
+line(ink, (540, 580), (540, 900))
+draw_on()
+```
+
+- **Brushes**: `brush(name, kind, color, size, …)` makes a Grease Pencil material with a procedural brush texture and a pressure profile. Kinds: ink, pen, marker, pencil, charcoal, chalk, bristle, oil, dry, wash, watercolor, airbrush, dots, squares.
+- **Colours**: hex strings plus `mix`, `lighten`, `darken`, `hsv`, `gradient`, `picture_palette`.
+- **Drawing**: `stroke`, `strokes` (thousands at once), `line`, `circle`, `ellipse`, `rect`, `arc`, `polygon`, `layer`.
+- **From a picture** (choose one in the toolbar; it is `IMAGE`): `paint([...brushes])` repaints it stroke by stroke, broad to fine, following its forms; `ink(brush)` adds ink lines along its edges.
+- **Motion and effects**: `draw_on`, `boil`, `glow`, `shadow`, and any Grease Pencil `effect(...)` or `modifier(...)`.
+- Templates: Brushes and Colours, Glowing Ankh, Paint My Picture, Ink Wash (Sumi-e), Stipple Dots. Errors highlight the line in red. **Copy for Claude** copies the script with the library reference; **Paste** takes Claude's answer back. **Open in Blender** opens the scene to keep drawing by hand.
+- The library lives in `Tools/script-lab/prism_gp.py`; after editing it or a template run `python3 scripts/sync-script-lab.py`.
+
 ## Creative Studio (Design Option C)
 
 PRISM's window has a dark Creative Studio sidebar: **Create** (every field and session, as before), **Import / Paste**, **Auto-Import**, **Library**, **Edit Studio**, **Realism Studio**, **Upscale Studio**, **Presets** and **Export**.
@@ -196,6 +217,7 @@ Sessions, history, sweep, compare, templates, storage and export work automatica
 
 The number lives in `Sources/EthersPrismCore/Core/AppVersion.swift` and `Support/Info.plist` (a test keeps them in step). The middle number goes up for new fields or features, the last for fixes. After an update, run `./install-app.sh` to refresh the copy in Applications.
 
+- **1.9.0** (Nov 14, 2026): Script Lab: make brushes, colours and strokes from Python (prism_gp), paint pictures stroke by stroke, run in Blender with a live result.
 - **1.8.0** (Nov 14, 2026): Color Studio: Resolve-style Primaries, Curves, Hue Curves, scopes and auto balance.
 - **1.7.0** (Nov 14, 2026): Color tab (Match to Reference, colour wheels, LUTs), subject-aware Background Defocus and Depth, Film Look (halation, bloom, grain), Copy/Paste Settings, Smart Reframe, 4K Upscale slider. Ideas from the DaVinci Resolve 20 Editor's and Colorist guides.
 - **1.6.0** (Nov 14, 2026): Design Option C — Creative Studio: dark teal interface, PRISM sidebar, Edit / Realism / Upscale Studio image editor with before/after, crop, rotate, zoom, presets, history, local 4K enhancement and export. Create keeps every existing field.

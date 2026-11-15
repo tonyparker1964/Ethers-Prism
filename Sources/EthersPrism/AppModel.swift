@@ -26,6 +26,8 @@ final class AppModel: ObservableObject {
     let autoImport: AutoImportController
     /// Edit / Realism / Upscale Studio and the PRISM sidebar.
     let studio: StudioModel
+    /// Script Lab: brush and colour scripts run in Blender.
+    let scriptLab: ScriptLabModel
 
     @Published var sessions: [Session] = []
     @Published var selectedID: UUID?
@@ -89,6 +91,7 @@ final class AppModel: ObservableObject {
     init() {
         autoImport = AutoImportController()
         studio = StudioModel(autoImport: autoImport, root: Store().root)
+        scriptLab = ScriptLabModel(root: Store().root, autoImport: autoImport)
         let key = Keychain.read(Self.keyAccount) ?? ""
         hasAPIKey = !key.isEmpty
         if let d = UserDefaults.standard.data(forKey: "agentTeam"), let t = try? JSONDecoder().decode(AgentTeam.self, from: d) {

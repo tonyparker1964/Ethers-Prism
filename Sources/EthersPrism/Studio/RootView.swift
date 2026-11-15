@@ -48,6 +48,7 @@ struct RootView: View {
             ImportLibrarySheet(embedded: true)
         }
         case .edit, .color, .realism, .upscale: StudioWorkspace()
+        case .scriptLab: ScriptLabPage()
         case .presets: PresetsPage()
         case .export: ExportPage()
         }
