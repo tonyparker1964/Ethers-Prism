@@ -1,6 +1,6 @@
 # Blender cheat sheet for Ethers Prism
 
-A working reference for the Blender side of Ethers Prism: Grease Pencil, Line Art, rendering, the command line and the Python API. It is written for **Blender 5.2 LTS** (the version on Ether's Mac mini) and checked against the official manual and API docs. Prism's agents can read it offline, and you can add it to a Claude project as knowledge so Claude's Blender scripts follow it.
+A working reference for the Blender side of Ethers Prism: Grease Pencil, Line Art, rendering, the command line and the Python API. It is written for **Blender 5.2 LTS and 5.3** (Ether's Mac mini runs 5.3) and checked against the official manual and API docs. Prism's agents can read it offline, and you can add it to a Claude project as knowledge so Claude's Blender scripts follow it.
 
 Full manual: https://docs.blender.org/manual/en/latest/ · Python API: https://docs.blender.org/api/current/
 
@@ -238,6 +238,18 @@ Add with `ob.modifiers.new(name, type)`. They act on strokes non-destructively, 
 | | Opacity | `GREASE_PENCIL_OPACITY` | Fade |
 | | **Tint** | `GREASE_PENCIL_TINT` | Ink color, gradients |
 | Edit | Texture Mapping | `GREASE_PENCIL_TEXTURE` | Stroke texture placement |
+
+**Build timing in Blender 5.x** uses `time_mode`, `start_delay` and `length` (the old `start_frame` / `end_frame` are gone):
+
+```python
+b = ob.modifiers.new("Draw On", 'GREASE_PENCIL_BUILD')
+b.mode = 'SEQUENTIAL'          # or 'CONCURRENT', 'ADDITIVE'
+b.time_mode = 'FRAMES'         # or 'DRAWSPEED', 'PERCENTAGE'
+b.start_delay = 0.0            # frames after the scene start
+b.length = 72.0                # frames to finish drawing
+```
+
+A closed (`cyclic`) stroke shows a straight closing line while Build is still drawing it. For a loop that draws itself cleanly, make it an open stroke whose last point repeats the first.
 | | **Time Offset** | `GREASE_PENCIL_TIME` | Loops (Regular, Reverse, Ping Pong, Chain), fixed frame (mouth shapes), desynced copies |
 | | Vertex Weight Angle / Proximity | `GREASE_PENCIL_WEIGHT_ANGLE` / `_PROXIMITY` | Weight-driven effects |
 
@@ -373,11 +385,22 @@ Blender 5.x keeps the compositor in a node group assigned to the scene:
 
 ```python
 tree = bpy.data.node_groups.new("Prism Comp", 'CompositorNodeTree')
-scene.compositing_node_group = tree
-# Add Render Layers → Glare → Group Output (or Composite) nodes, then link them
+scene.compositing_node_group = tree               # scene.use_nodes / scene.node_tree are gone
+rl = tree.nodes.new('CompositorNodeRLayers')
+out = tree.nodes.new('NodeGroupOutput')            # CompositorNodeComposite is gone in 5.x
+tree.interface.new_socket('Image', in_out='OUTPUT', socket_type='NodeSocketColor')
 glare = tree.nodes.new('CompositorNodeGlare')
-glare.inputs['Type'].default_value = 'Bloom'   # 5.x exposes glare settings as inputs
+# 5.2+: every Glare setting is an input socket (glare.glare_type, glare.size … no longer exist)
+glare.inputs['Type'].default_value = 'Fog Glow'    # 'Bloom', 'Fog Glow', 'Streaks', 'Ghosts', …
+glare.inputs['Threshold'].default_value = 0.3
+glare.inputs['Size'].default_value = 7.0
+glare.inputs['Strength'].default_value = 1.0
+tree.links.new(rl.outputs['Image'], glare.inputs['Image'])
+tree.links.new(glare.outputs['Image'], out.inputs['Image'])
+scene.render.use_compositing = True
 ```
+
+Scripts that must also run on 4.x: test `hasattr(scene, 'compositing_node_group')` and fall back to `scene.use_nodes` / the Composite node.
 
 Useful nodes: Glare (Bloom, Fog Glow, Streaks, Ghosts), Blur, Bokeh Blur, Defocus, Color Balance, Hue/Saturation, Curves, Alpha Over, Mix, Denoise, Lens Distortion.
 
@@ -427,7 +450,10 @@ Meshes + Scene Line Art (Contour + Crease + Intersections, Use Cache on extra Li
 | Line Art very slow | Turn on **Use Cache** for the 2nd and later modifiers; Force Backface Culling; bake |
 | `bpy.ops…` fails in background | The operator needs a UI context. Use the data API instead |
 | Interpolation looks wrong | Keys need strokes with the same number of points |
-| Fill doesn't appear | The stroke isn't closed (`cyclic`), or the material has Fill off |
+| Fill doesn't appear | The stroke isn't closed (`cyclic`), the material has Fill off, or the stroke's `fill_id` isn't set |
+| Existing strokes vanish after adding an attribute | `drawing.attributes.new("radius", …)` replaced the built-in one; write to the existing attribute instead |
+| `AttributeError` on a Build modifier's `start_frame` | Blender 5.x: use `time_mode`, `start_delay`, `length` |
+| `KeyError`/`AttributeError` on `scene.node_tree` or `glare.glare_type` | Blender 5.x compositor: `scene.compositing_node_group`, Group Output node, Glare settings as inputs |
 | Render goes to the wrong path | `-o` was given after `-f`/`-a`; put `-f`/`-a` last |
 | Video won't play or won't encode | Container and codec don't match (WebM needs VP9/AV1; ProRes needs QuickTime); use even resolutions |
 | Out of memory on the 24 GB Mac | Don't run Blender and ComfyUI at full load together; lower samples or resolution for previews |
