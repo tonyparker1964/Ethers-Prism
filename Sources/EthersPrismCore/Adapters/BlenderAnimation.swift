@@ -305,18 +305,37 @@ for i in range(frames):
 
 # --- Bloom, where this Blender version's compositor allows it ---
 try:
-    scene.use_nodes = True
-    tree = scene.node_tree
-    rl = next(n for n in tree.nodes if n.type == 'R_LAYERS')
-    comp = next(n for n in tree.nodes if n.type == 'COMPOSITE')
+    if hasattr(scene, 'compositing_node_group'):
+        # Blender 5.x: the compositor is a node group with a Group Output (the Composite node is gone).
+        tree = bpy.data.node_groups.new('Bloom', 'CompositorNodeTree')
+        scene.compositing_node_group = tree
+        rl = tree.nodes.new('CompositorNodeRLayers')
+        comp = tree.nodes.new('NodeGroupOutput')
+        tree.interface.new_socket('Image', in_out='OUTPUT', socket_type='NodeSocketColor')
+    else:
+        scene.use_nodes = True
+        tree = scene.node_tree
+        rl = next(n for n in tree.nodes if n.type == 'R_LAYERS')
+        comp = next(n for n in tree.nodes if n.type == 'COMPOSITE')
     g = tree.nodes.new('CompositorNodeGlare')
-    for key, value in (('glare_type', 'FOG_GLOW'), ('threshold', 0.7), ('size', 8)):
-        try: setattr(g, key, value)
-        except Exception:
-            sock = g.inputs.get(key.replace('_', ' ').title())
-            if sock is not None and not isinstance(value, str): sock.default_value = value
+    # Blender 5.2+: Glare settings are input sockets; older versions use properties.
+    typ = g.inputs.get('Type')
+    for v_ in ('Fog Glow', 'FOG_GLOW'):
+        try:
+            if typ is not None: typ.default_value = v_
+            else: g.glare_type = v_
+            break
+        except Exception: pass
+    for name, prop, val in (('Threshold', 'threshold', 0.7), ('Size', 'size', 8)):
+        sock = g.inputs.get(name)
+        try:
+            if sock is not None: sock.default_value = val
+            else: setattr(g, prop, val)
+        except Exception: pass
     tree.links.new(rl.outputs['Image'], g.inputs['Image'])
-    tree.links.new(g.outputs['Image'], comp.inputs['Image'])
+    tree.links.new(g.outputs['Image'], comp.inputs[0])
+    try: scene.render.use_compositing = True
+    except Exception: pass
 except Exception as e:
     print('Bloom skipped:', e, file=sys.stderr)
 

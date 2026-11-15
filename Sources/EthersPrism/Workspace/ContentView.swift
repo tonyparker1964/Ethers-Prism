@@ -3,14 +3,17 @@ import EthersPrismCore
 
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var auto: AutoImportController
     @AppStorage("showHistory") private var showHistory = true
     @State private var search = ""
 
     var body: some View {
-        NavigationSplitView {
+        // The session list sits beside the PRISM sidebar as a plain column. (A NavigationSplitView here
+        // floated its own macOS sidebar over the PRISM sidebar.)
+        HStack(spacing: 0) {
             SessionSidebar(search: $search)
-                .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 320)
-        } detail: {
+                .frame(width: 230)
+            Rectangle().fill(PrismTheme.border).frame(width: 1)
             if let s = model.current {
                 HStack(spacing: 0) {
                     ControlsColumn()
@@ -92,6 +95,7 @@ enum FieldStyle {
 /// Sessions grouped by field, with search.
 struct SessionSidebar: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var auto: AutoImportController
     @Binding var search: String
 
     private var groups: [(field: any DomainAdapter, sessions: [Session])] {
@@ -122,27 +126,9 @@ struct SessionSidebar: View {
             }
         }
         .listStyle(.sidebar)
-        .searchable(text: $search, placement: .sidebar, prompt: "Search sessions")
-        .safeAreaInset(edge: .top, spacing: 0) {
-            HStack(spacing: 10) {
-                AppLogo(size: 34)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Ether's Prism").font(.headline)
-                    Text("Build the instrument, then play it.").font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            HStack {
-                Text("Version \(AppVersion.number)").font(.caption2).foregroundStyle(.tertiary)
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-        }
+        .scrollContentBackground(.hidden)
+        .background(PrismTheme.sidebar)
+        .searchable(text: $search, placement: .toolbar, prompt: "Search sessions")
         .toolbar {
             ToolbarItem {
                 Menu {

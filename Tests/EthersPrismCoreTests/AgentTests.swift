@@ -234,18 +234,29 @@ final class LineLogoTests: XCTestCase {
         XCTAssertEqual(a.capabilities.kind, .video)
         XCTAssertFalse(a.capabilities.needsVideoProvider, "Blender, not ComfyUI")
         let dials = try await a.suggestDials(for: "", using: ProviderSet(text: MockTextProvider(), image: nil))
-        XCTAssertEqual(dials.map(\.name), ["Draw speed", "Line weight", "Wobble", "Timing", "Glow", "Detail", "Ink", "Camera push", "Length"])
+        XCTAssertEqual(Array(dials.prefix(9)).map(\.name), ["Draw speed", "Line weight", "Wobble", "Timing", "Glow", "Detail", "Ink", "Camera push", "Length"])
+        XCTAssertEqual(dials.count, 27)
+        XCTAssertEqual(Set(dials.map(\.name)).count, dials.count)
     }
 
     func testLineLogoReadsTheImageAndDials() {
         XCTAssertEqual(GreasePencilLogoAdapter.imagePath(from: "neon version\n/Volumes/Art/My Logo.PNG"), "/Volumes/Art/My Logo.PNG")
         XCTAssertNil(GreasePencilLogoAdapter.imagePath(from: "just words"))
         let dials = [Dial(name: "Glow", lowPole: "a", highPole: "b", value: 80),
-                     Dial(name: "Camera push", lowPole: "a", highPole: "b", value: 0)]
+                     Dial(name: "Camera push", lowPole: "a", highPole: "b", value: 0),
+                     Dial(name: "Micro-detail", lowPole: "a", highPole: "b", value: 90),
+                     Dial(name: "Ink fidelity", lowPole: "a", highPole: "b", value: 70),
+                     Dial(name: "Resolution", lowPole: "a", highPole: "b", value: 100)]
         let state = WorkingState(goal: "", domainID: "linelogo", dials: dials, constraints: [])
         let p = GreasePencilLogoAdapter.parameters(CompileInput(state: state, quality: .preview))
         XCTAssertEqual(p["glow"] as? Double, 0.8)
         XCTAssertEqual(p["drift"] as? Double, 0)
+        XCTAssertEqual(p["resolution"] as? Double, 1)
+        XCTAssertEqual(p["micro"] as? Double, 0.9)
+        XCTAssertEqual(p["detail"] as? Double, 0.5)
+        XCTAssertEqual(p["fidelity"] as? Double, 0.7)
+        XCTAssertEqual(p["ink"] as? Double, 0)
+        XCTAssertEqual(p["photo"] as? Double, 0)
         XCTAssertEqual(p["image"] as? String, GreasePencilLogoAdapter.defaultLogo, "empty goal uses the emblem")
         XCTAssertEqual(p["quality"] as? String, "preview")
         let r1 = GreasePencilLogoAdapter().compile(CompileInput(state: state, quality: .preview))

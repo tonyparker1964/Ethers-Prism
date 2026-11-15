@@ -6,7 +6,7 @@
 
 Describe a goal and Ethers Prism builds you an editor: dials with named ends, plus fixed requirements. Move the dials, watch previews change, sweep one dial across its range, branch through history, compare states, render the version you choose, and export it with an authorship log. Choosing and editing the dials is part of the authorship.
 
-Eight fields, all working and all local: **Text**, **Image**, **3D Stage (Blender)**, **3D from Image (Blender)**, **Animation (Blender)**, **Line Logo (Grease Pencil)**, **Blender Script (from Claude)** and **Beats (your samples)**.
+Eight fields, all working and all local: **Text**, **Image**, **3D Stage (Blender)**, **3D from Image (Blender)**, **Animation (Blender)**, **True Trace (Grease Pencil)**, **Blender Script (from Claude)** and **Beats (your samples)**.
 
 Retired fields (Video Storyboard, Music Sketch, Code, Research, Text to Video, Image to Video) are no longer offered for new work, but sessions made with them still open with their results. Text to Video and Image to Video are parked on the `ltx-mlx` branch until LTX runs on this Mac.
 
@@ -53,9 +53,23 @@ Text to Video and Image to Video (LTX) are hidden, along with Settings → Video
 
 Turns any picture into a 3D model, renders it, and saves the model as a GLB. **Relief** (Mode toward the left) raises the light parts and sinks the dark parts, like a carved plaque; **Extrude** (toward the right) pulls the picture's outline, or a logo's lines, out into a solid with bevelled edges. Pictures with a transparent background are cut out to their shape; on others the background colour is treated as empty. Dials: Mode, Depth, Bevel, Material (metal ↔ glass ↔ neon), Detail, Color (one tint ↔ the picture's colors), Light angle, Camera angle. Previews take a few seconds; Render Full Quality makes a 1080p picture and keeps the model in Documents → Ethers Prism Exports → 3D Models. **Open in 3D Stage** starts a 3D Stage session with the model.
 
-## Line Logo (Grease Pencil)
+## True Trace (Grease Pencil)
 
-Blender traces a logo image into Grease Pencil lines that draw themselves on, as an MP4. Leave the goal empty to use the Ether Frequency emblem (`Examples/ether-frequency-emblem.png`), or press **Choose Logo…**. Lines keep the logo's own colors (or glow white), draw from the centre outward, boil slightly like hand-drawn animation, and can hold on 2s or 3s; glow lines and bloom make it neon. Dials: Draw speed, Line weight, Wobble, Timing, Glow, Detail, Ink, Camera push, Length. Previews are 2 seconds at 640×360 and take a few seconds; full renders are 720p, 3–12 seconds.
+Formerly Line Logo. Choose an image, then let Grease Pencil redraw it, with no image model involved. Blender traces the picture's colours and edges and rebuilds it from filled shapes and ink strokes.
+
+- **True Trace (faithful)** redraws the image as closely as it can, from hundreds of shapes.
+- **Choose your look → True Trace in This Look** redraws it in a Studio look: Anime and cartoon looks get cel shading and line art; Manga and ink looks black-and-white ink; Comic, Poster, Stained Glass and similar bold shapes with heavy outlines; Watercolor and painted looks soft shapes; plus Flat, Pixel, Neon, Blueprint and Chalk. The **3D** tab's looks are built in **Blender 3D** instead (**Build This Look in 3D**): Blender cuts out the subject and inflates it into a rounded model like sculpted clay (a full-frame picture becomes a carved relief), paints the picture onto it and gives it the look's finish: modelling clay, white clay, needle felt, knitted yarn, glossy vinyl, balloon, glazed porcelain, carved marble, carved wood, glass, sculpted metal, CGI, low-poly facets or folded paper. You get a still and a turntable video in History, plus a .blend and a .glb (for 3D Stage). Only photographic looks (Photorealistic, Polaroid, Tilt-Shift and the like) are dimmed: they need a real camera or an image model.
+- **Character looks (Anime, Donghua, World): make it first, trace it second.** Tracing keeps your picture's shapes, so it can't redraw faces and eyes in a style. **Copy <look> Prompt** copies a prompt that has an image tool redraw your picture in that look while keeping your characters, pose and symbols. Bring the result back with **Choose Image…** and click **True Trace (faithful)**: Grease Pencil rebuilds it as editable, animated line art.
+- **Detail slider** (in Choose your look): low gives bold, simple shapes and few lines (the most stylised); high gives rich detail and many lines (closest to your picture). 60% is each look as designed. It applies to True Trace (faithful) too.
+- **Every look is its own.** The look's description sets its line style and shading (thick or delicate ink, black or coloured lines, hand-drawn wobble, how many shadow tones, softness, saturation, contrast, glow), and its sample picture sets its colours: the traced palette is repainted to match the sample, so Showa-era comes out in warm film tones and City-pop retro in sunset pinks, while your picture stays recognisable.
+- Each run gives a **finished still** and a **video of it drawing itself on**, both in History, plus an editable **Blender file** (**Show Blender File**). The engines live in `Tools/true-trace` and `Tools/sculpt-3d` (see their READMEs to tune a look).
+
+The field keeps all of Line Logo's tools:
+
+
+Blender traces a logo image into Grease Pencil lines that draw themselves on, as an MP4. Leave the goal empty to use the Ether Frequency emblem (`Examples/ether-frequency-emblem.png`), or press **Choose Logo…**. Lines keep the logo's own colors (or glow white), draw from the centre outward, boil slightly like hand-drawn animation, and can hold on 2s or 3s; glow lines and bloom make it neon. Dials: Draw speed, Line weight, Wobble, Timing, Glow, Detail, Ink, Camera push, Length. Previews are 2 seconds at 640×360 (360×640 in portrait). Full MP4 renders run 3–12 seconds. Set **Resolution** to 100 for 3840×2160, or raise **Framing** to 50 or higher for 2160×3840. The intermediate resolution stops are 1080p and 1440p. Use **Suggest Dials** to add controls to an existing session while keeping its settings.
+
+Raise **Trace resolution**, **Micro-detail**, **Edge sensitivity**, and **Path precision** to capture finer contours. **Photo reveal** progressively exposes the original image behind the strokes. **Texture fidelity** adjusts texture sampling, and **Ink fidelity** blends traced colors toward the source tones. Use exposure, contrast, saturation, warmth, and photo light falloff to grade the result. Lower **Timing** to 0 for a drawing on every frame, and adjust **Stroke stability**, **Reveal easing**, and **Stroke opacity** for the motion and overlay. Higher anti-aliasing and tracing settings increase render time.
 
 ## Blender Script (from Claude)
 
@@ -95,7 +109,7 @@ Kontakt instruments store their samples in Native Instruments' locked formats (.
 
 ## Using it
 
-1. Pick a field, type a goal, press **Suggest Dials** (4–8 dials). Edit, add, delete, reorder (pencil → Move Up/Down) or lock any dial.
+1. Pick a field with its button at the top of the controls, type a goal, press **Suggest Dials** (4–8 dials). Edit, add, delete, reorder (pencil → Move Up/Down) or lock any dial.
 2. Add **fixed requirements** (accuracy, accessibility, must include, must avoid). They are never put on sliders.
 3. Release a slider and a preview appears once the dials stop moving. **Explore Nearby** nudges unlocked dials. **Render Full Quality** when you're ready.
 4. **Edit Text** to change a result by hand. Saving makes a new history state, and regenerating never overwrites it.
@@ -104,6 +118,74 @@ Kontakt instruments store their samples in Native Instruments' locked formats (.
 7. **Compare** two states side by side, including differences in goal, dials and requirements.
 8. **Templates:** *Save Editor as Template* and *New from Template*. Three editable examples are included.
 9. **Export** writes the result, a portable session file and a readable authorship log into a folder. **Import Session** opens a session file.
+
+## Choose your look
+
+In **Text**, **Image**, **3D Stage**, **3D from Image** and **True Trace**, the **Choose your look** section has all 146 Ether Image Studio looks, in the Studio's six collections: Images, 3D, Anime, Donghua, World and Visions. Each collection is a tab showing its count, with a grid of sample thumbnails. Click a thumbnail to pick a look, then:
+
+- **Image with a reference image** (ComfyUI): **Apply Look to Reference** restyles the picture.
+- **Image without a reference:** **Use This Look** adds the look to your goal and makes a preview.
+- **Text:** **Use This Look** adds the look to your goal, so the writing describes it or prompts for it.
+- **3D Stage:** the 3D tab's looks become finishes on your model (**Apply This Finish to the Model**): clay, felt, vinyl, porcelain, marble, wood, glass, metal and more, with a matching backdrop. Other looks are dimmed.
+- **True Trace** and **3D from Image:** 2D looks are drawn by Grease Pencil (**True Trace in This Look**) and 3D looks are sculpted in Blender (**Build This Look in 3D**), from the field's image (see True Trace above).
+
+## Script Lab (brushes and colours from a script)
+
+Sidebar → **Script Lab**: write a few lines of Python, press **⌘↩** (finished frame) or **⇧⌘↩** (video), and Blender draws it in Grease Pencil.
+
+```python
+canvas(1080, 1080, background="#f3ede1", seconds=4)
+gold = brush("Gold", kind="marker", color="#e8b53a", size=14)
+ink  = brush("Ink", kind="ink", color="#151515", size=6)
+circle(gold, (540, 400), 180)
+line(ink, (540, 580), (540, 900))
+draw_on()
+```
+
+- **Brushes**: `brush(name, kind, color, size, …)` makes a Grease Pencil material with a procedural brush texture and a pressure profile. Kinds: ink, pen, marker, pencil, charcoal, chalk, bristle, oil, dry, wash, watercolor, airbrush, dots, squares.
+- **Colours**: hex strings plus `mix`, `lighten`, `darken`, `hsv`, `gradient`, `picture_palette`.
+- **Drawing**: `stroke`, `strokes` (thousands at once), `line`, `circle`, `ellipse`, `rect`, `arc`, `polygon`, `layer`.
+- **From a picture** (choose one in the toolbar; it is `IMAGE`): `paint([...brushes])` repaints it stroke by stroke, broad to fine, following its forms; `ink(brush)` adds ink lines along its edges.
+- **Motion and effects**: `draw_on`, `boil`, `glow`, `shadow`, and any Grease Pencil `effect(...)` or `modifier(...)`.
+- Templates: Brushes and Colours, Glowing Ankh, Paint My Picture, Ink Wash (Sumi-e), Stipple Dots. Errors highlight the line in red. **Copy for Claude** copies the script with the library reference; **Paste** takes Claude's answer back. **Open in Blender** opens the scene to keep drawing by hand.
+- The library lives in `Tools/script-lab/prism_gp.py`; after editing it or a template run `python3 scripts/sync-script-lab.py`.
+
+## Creative Studio (Design Option C)
+
+PRISM's window has a dark Creative Studio sidebar: **Create** (every field and session, as before), **Import / Paste**, **Auto-Import**, **Library**, **Edit Studio**, **Realism Studio**, **Upscale Studio**, **Presets** and **Export**.
+
+- **Getting images in:** ⌘V pastes an image copied in the ChatGPT app (right-click → Copy Image); drag and drop; Choose Images…; or Auto-Import. Everything lands in the PRISM library (originals are never changed; duplicates are skipped).
+- **Canvas:** before/after comparison with a draggable divider, zoom in/out (⌘+ / ⌘−), Fit (⌘0), 100% (⌘1), pinch to zoom, Pan, Crop, rotate left/right, and fullscreen preview (⌃⌘F).
+- **Adjust:** Exposure, Brightness, Contrast, Highlights, Shadows, Saturation, Vibrance, White Balance, Sharpness.
+- **Realism:** Photorealism, Microtexture, Skin Detail Preservation, Surface Detail, Depth Enhancement, Local Contrast, Highlight Recovery, Shadow Recovery, Edge Refinement, Noise Reduction.
+- **Enhance:** Local (Mac) engine; Detail Recovery, Noise Reduction, Edge Refinement and Texture Preservation for anything made larger; Upscale 2×, Upscale 4× and **Enhance to 4K** (long edge 3840) save a new version to the library. "AI (Optional)" stays off unless an AI engine is configured; nothing needs the OpenAI API.
+- Every slider is a real Core Image operation running on the Mac's GPU (Metal), previewed live in the background. Upscaling is Lanczos resampling plus detail recovery and edge refinement, not generative AI.
+- Undo / Redo (⌘Z / ⇧⌘Z), per-slider reset, Reset tab, Reset All, autosaved projects with a history menu, saved presets.
+- **Color:** Match to Reference (gives a picture the colours of another, so a series looks like one set), Lift / Gamma / Gain / Offset and Shadows / Midtones / Highlights colour wheels, and .cube LUT import with a strength slider. All three run as one 3D LUT pass.
+- **Realism extras:** Background Defocus and a subject-aware Depth Enhancement (Apple Vision finds the subject on the Mac), plus a Film Look: Halation, Bloom and Film Grain.
+- **Color Studio** (after DaVinci Resolve's Color page): a grading panel under the picture with **Primaries** (Lift / Gamma / Gain / Offset or Log wheels with Y·R·G·B numbers, Temp, Tint, Contrast, Pivot, Mid/Detail, Color Boost, Shadows, Highlights, Saturation, Hue, Lum Mix, and **A** for auto balance), **Curves** (custom Y / R / G / B over a live histogram) and **Hue Curves** (Hue vs Hue, Hue vs Sat, Hue vs Lum, Lum vs Sat), with live **scopes** beside it: Parade, Waveform, Vectorscope (with skin-tone line), Histogram and CIE chromaticity (Rec.709 and P3). Right-click a thumbnail → Shot Match to This Picture.
+- **Copy / Paste Settings** (⌥⌘C / ⌥⌘V): copy one picture's look and paste it onto others; in the Library choose Select…, pick pictures and Paste Settings. Crop and rotation stay with each picture; a Match to Reference is re-measured for each one.
+- **Smart Reframe** on the Export page: 9:16, 1:1, 4:5 or 16:9, centred on the subject Apple Vision finds.
+- **Export:** PNG, JPEG, TIFF, HEIC and WebP (where macOS can write it), at original, 2×, 4×, 3840×2160 or a custom width, with quality and transparency settings, through the normal Save dialog.
+
+## PRISM Auto-Import (Settings → Auto-Import)
+
+Images you save from the ChatGPT desktop app land in the PRISM library on their own.
+
+1. Settings → Auto-Import: turn it on and choose the folder you save into — **Choose Folder…**, **Use Downloads**, or **Use a ChatGPT Folder** (creates `Downloads/ChatGPT Images`).
+2. In ChatGPT, save the picture into that folder.
+3. PRISM sees the new file, waits until it has finished saving, and copies it into `~/Pictures/PRISM/ChatGPT Imports`, with a thumbnail.
+4. Open the library from the sidebar (**ChatGPT Imports**) or **File → ChatGPT Imports…** (⇧⌘I). Double-click a picture to edit it in True Trace, or right-click → Open in Image (as reference).
+
+- PNG, JPEG, HEIC, TIFF and WebP. Copies are byte-for-byte; the original is never changed or moved.
+- Duplicates are found by SHA-256 of the file's contents, so the same picture saved twice comes in once.
+- Half-finished downloads (`.crdownload`, `.download`, `.part`, still growing, or not yet readable) are waited for.
+- While PRISM is closed, nothing is watched; at the next launch it picks up pictures saved since it last looked.
+- The first time you choose a folder, only new pictures come in. **Import Existing Images Now** brings in what's already there.
+- Optional: a notification for each import, and opening each new picture straight in the editor.
+- The folder choice is kept as a security-scoped bookmark, so access survives restarts.
+
+PRISM only watches the folder you choose. It doesn't read ChatGPT's data or talk to ChatGPT, and ChatGPT has no automatic image-download feature for it to use: you save the picture, PRISM does the rest.
 
 ## Storage
 
@@ -135,6 +217,11 @@ Sessions, history, sweep, compare, templates, storage and export work automatica
 
 The number lives in `Sources/EthersPrismCore/Core/AppVersion.swift` and `Support/Info.plist` (a test keeps them in step). The middle number goes up for new fields or features, the last for fixes. After an update, run `./install-app.sh` to refresh the copy in Applications.
 
+- **1.9.0** (Nov 14, 2026): Script Lab: make brushes, colours and strokes from Python (prism_gp), paint pictures stroke by stroke, run in Blender with a live result.
+- **1.8.0** (Nov 14, 2026): Color Studio: Resolve-style Primaries, Curves, Hue Curves, scopes and auto balance.
+- **1.7.0** (Nov 14, 2026): Color tab (Match to Reference, colour wheels, LUTs), subject-aware Background Defocus and Depth, Film Look (halation, bloom, grain), Copy/Paste Settings, Smart Reframe, 4K Upscale slider. Ideas from the DaVinci Resolve 20 Editor's and Colorist guides.
+- **1.6.0** (Nov 14, 2026): Design Option C — Creative Studio: dark teal interface, PRISM sidebar, Edit / Realism / Upscale Studio image editor with before/after, crop, rotate, zoom, presets, history, local 4K enhancement and export. Create keeps every existing field.
+- **1.5.0** (Nov 14, 2026): PRISM Auto-Import: images saved from the ChatGPT app into a watched folder are copied into the PRISM library (`~/Pictures/PRISM/ChatGPT Imports`) with thumbnails, duplicate checks and optional notifications, ready to open in True Trace. Also True Trace, Choose your look, Sculpt 3D and the Detail slider.
 - **1.4.0** (Nov 11, 2026): Cleaner macOS look: sessions grouped by field with search, Preview and Render in the toolbar and at the bottom of the controls, grouped settings-style controls, History in a side inspector, results shown on a canvas. Blender Script errors show only the script's own lines.
 - **1.3.0** (Nov 11, 2026): Blender Script (from Claude) field: scripts copied from Claude fill in by themselves, are saved in a library, preview as one frame and render as MP4.
 - **1.2.0** (Nov 11, 2026): 3D from Image (Blender) field with Relief and Extrude, metal/glass/neon materials, and Open in 3D Stage.

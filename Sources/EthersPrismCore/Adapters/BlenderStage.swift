@@ -25,10 +25,12 @@ public struct BlenderStageAdapter: DomainAdapter {
 
     /// The model path from the goal, if it names a file.
     public static func modelPath(from goal: String) -> String? {
-        var p = goal.trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-        if p.hasPrefix("~") { p = NSString(string: p).expandingTildeInPath }
-        let ext = (p as NSString).pathExtension.lowercased()
-        return ["glb", "gltf", "obj", "fbx"].contains(ext) ? p : nil
+        for line in goal.components(separatedBy: .newlines) {
+            var p = line.trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            if p.hasPrefix("~") { p = NSString(string: p).expandingTildeInPath }
+            if ["glb", "gltf", "obj", "fbx"].contains((p as NSString).pathExtension.lowercased()) { return p }
+        }
+        return nil
     }
 
     /// Scene parameters (0...1) read from dials by name, in a fixed order so output is deterministic.
@@ -36,9 +38,14 @@ public struct BlenderStageAdapter: DomainAdapter {
         func v(_ key: String, _ fallback: Double) -> Double {
             (input.state.dials.first { $0.name.lowercased().contains(key) }?.value ?? fallback) / 100
         }
-        return ["orbit": v("orbit", 10), "height": v("height", 35), "lens": v("lens", 35),
-                "light": v("light", 50), "mood": v("mood", 40),
-                "quality": input.quality.rawValue, "model": modelPath(from: input.state.goal) ?? ""]
+        var p: [String: Any] = ["orbit": v("orbit", 10), "height": v("height", 35), "lens": v("lens", 35),
+                                "light": v("light", 50), "mood": v("mood", 40),
+                                "quality": input.quality.rawValue, "model": modelPath(from: input.state.goal) ?? ""]
+        // A 3D look chosen in Choose your look becomes a finish on the model.
+        if let look = Sculpt3D.lookName(in: input.state.goal), let finish = Sculpt3D.finish(look: look) {
+            p["finish"] = Sculpt3D.recipe(finish)
+        }
+        return p
     }
 
     public func compile(_ input: CompileInput) -> CompiledRequest {
@@ -124,6 +131,83 @@ else:
     mat.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (0.8, 0.45, 0.25, 1)
     o.data.materials.append(mat)
 meshes = [o for o in scene.objects if o.type == 'MESH']
+fin = a.get('finish')
+
+
+def _inp(node, names, value):
+    for n in names:
+        s = node.inputs.get(n)
+        if s is not None:
+            try:
+                s.default_value = value; return
+            except Exception:
+                pass
+
+
+if fin:
+    # Choose your look: give every material the finish (clay, marble, glass, metal …), keeping the model's colours
+    # unless the finish has its own colour.
+    for o in meshes:
+        if not o.data.materials:
+            o.data.materials.append(bpy.data.materials.new('Finish'))
+        for i, mat in enumerate(o.data.materials):
+            mat = (mat or bpy.data.materials.new('Finish')).copy()
+            o.data.materials[i] = mat
+            mat.use_nodes = True
+            nt = mat.node_tree
+            b = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+            if b is None:
+                continue
+            base = b.inputs['Base Color']
+            mono = fin.get('mono')
+            if mono:
+                src = base.links[0].from_socket if base.is_linked else None
+                mix = nt.nodes.new('ShaderNodeMixRGB')
+                mix.inputs[0].default_value = fin.get('picture_mix', 0.15) if src else 0.0
+                mix.inputs[1].default_value = (*mono, 1)
+                if src:
+                    nt.links.new(src, mix.inputs[2])
+                colour = mix.outputs['Color']
+                if fin.get('pattern') in ('marble', 'wood'):
+                    wave = nt.nodes.new('ShaderNodeTexWave')
+                    _inp(wave, ['Scale'], 3.0 if fin['pattern'] == 'marble' else 9.0)
+                    _inp(wave, ['Distortion'], 12.0 if fin['pattern'] == 'marble' else 4.0)
+                    _inp(wave, ['Detail'], 6.0)
+                    if fin['pattern'] == 'wood':
+                        try: wave.wave_type = 'RINGS'
+                        except Exception: pass
+                    ramp = nt.nodes.new('ShaderNodeValToRGB')
+                    ramp.color_ramp.elements[0].color = (*fin.get('vein', [0.35, 0.33, 0.32]), 1)
+                    ramp.color_ramp.elements[0].position = 0.45 if fin['pattern'] == 'marble' else 0.3
+                    nt.links.new(wave.outputs['Fac'], ramp.inputs['Fac'])
+                    vein = nt.nodes.new('ShaderNodeMixRGB')
+                    vein.blend_type = 'MULTIPLY'
+                    vein.inputs[0].default_value = 1.0
+                    nt.links.new(colour, vein.inputs[1])
+                    nt.links.new(ramp.outputs['Color'], vein.inputs[2])
+                    colour = vein.outputs['Color']
+                nt.links.new(colour, base)
+            _inp(b, ['Roughness'], fin.get('roughness', 0.5))
+            _inp(b, ['Metallic'], fin.get('metallic', 0.0))
+            if fin.get('subsurface'): _inp(b, ['Subsurface Weight', 'Subsurface'], fin['subsurface'])
+            if fin.get('coat'): _inp(b, ['Coat Weight', 'Clearcoat'], fin['coat'])
+            if fin.get('sheen'): _inp(b, ['Sheen Weight', 'Sheen'], fin['sheen'])
+            if fin.get('transmission'):
+                _inp(b, ['Transmission Weight', 'Transmission'], fin['transmission'])
+                _inp(b, ['IOR'], 1.45)
+            if fin.get('bump'):
+                noise = nt.nodes.new('ShaderNodeTexNoise')
+                _inp(noise, ['Scale'], {'fingerprints': 60.0, 'fuzz': 400.0, 'knit': 120.0, 'hammered': 25.0}.get(fin['bump'], 60.0))
+                bump = nt.nodes.new('ShaderNodeBump')
+                _inp(bump, ['Strength'], fin.get('bump_strength', 0.15))
+                nt.links.new(noise.outputs['Fac'], bump.inputs['Height'])
+                nt.links.new(bump.outputs['Normal'], b.inputs['Normal'])
+        if fin.get('flat_shading'):
+            for poly in o.data.polygons:
+                poly.use_smooth = False
+            if fin.get('decimate'):
+                dm = o.modifiers.new('Facets', 'DECIMATE')
+                dm.ratio = max(0.05, float(fin['decimate']) * 5)
 pts = [o.matrix_world @ Vector(c) for o in meshes for c in o.bound_box] or [Vector((0, 0, 0))]
 mn = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
 mx = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
@@ -155,6 +239,8 @@ area('fill', center + Vector((-radius * 4, -radius * 2, radius * 2)), (500 * (1 
 area('rim', center + Vector((0, radius * 4, radius * 3)), 500 * r2, radius * 2, (1, 1, 1))
 world = bpy.data.worlds.new('world'); scene.world = world; world.use_nodes = True
 world.node_tree.nodes['Background'].inputs['Color'].default_value = (*(key_color * (0.05 + 0.15 * (1 - contrast))), 1)
+if fin and fin.get('bg'):
+    world.node_tree.nodes['Background'].inputs['Color'].default_value = (*fin['bg'], 1)
 preview = a['quality'] == 'preview'
 if preview:
     for engine in ('BLENDER_EEVEE_NEXT', 'BLENDER_EEVEE'):

@@ -14,6 +14,7 @@ APP="$STAGE/Ethers Prism.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/EthersPrism"
 cp Support/Info.plist "$APP/Contents/Info.plist"
+ditto "$(dirname "$BIN")/EthersPrism_EthersPrism.bundle" "$APP/EthersPrism_EthersPrism.bundle"
 
 # App icon: every size macOS asks for, made from Support/AppIcon.png.
 ICONSET="$STAGE/AppIcon.iconset"

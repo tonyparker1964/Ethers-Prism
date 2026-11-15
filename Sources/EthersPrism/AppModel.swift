@@ -22,6 +22,12 @@ final class AppModel: ObservableObject {
     static let keyAccount = "anthropic-api-key"
 
     let store = Store()
+    /// PRISM Auto-Import: new pictures saved into a watched folder go into the PRISM library.
+    let autoImport: AutoImportController
+    /// Edit / Realism / Upscale Studio and the PRISM sidebar.
+    let studio: StudioModel
+    /// Script Lab: brush and colour scripts run in Blender.
+    let scriptLab: ScriptLabModel
 
     @Published var sessions: [Session] = []
     @Published var selectedID: UUID?
@@ -83,6 +89,9 @@ final class AppModel: ObservableObject {
     private var debounceTask: Task<Void, Never>?
 
     init() {
+        autoImport = AutoImportController()
+        studio = StudioModel(autoImport: autoImport, root: Store().root)
+        scriptLab = ScriptLabModel(root: Store().root, autoImport: autoImport)
         let key = Keychain.read(Self.keyAccount) ?? ""
         hasAPIKey = !key.isEmpty
         if let d = UserDefaults.standard.data(forKey: "agentTeam"), let t = try? JSONDecoder().decode(AgentTeam.self, from: d) {
@@ -113,6 +122,37 @@ final class AppModel: ObservableObject {
         }
         if sessions.isEmpty { newSession() } else { selectedID = sessions.first?.id }
         startClipboardWatch()
+        autoImport.onOpen = { [weak self] url, target in self?.openImported(url, in: target) }
+        autoImport.start()
+    }
+
+    // MARK: - PRISM Auto-Import
+
+    /// Opens a picture from the PRISM library in a new session: True Trace, or the Image field with it as the reference.
+    func openImported(_ url: URL, in target: AutoImportController.OpenTarget) {
+        let name = url.deletingPathExtension().lastPathComponent
+        if target != .studio { studio.section = .create }
+        switch target {
+        case .studio:
+            studio.open(url: url)
+            if studio.section.studioTab == nil { studio.section = .edit }
+        case .trueTrace:
+            openInLineLogo(url)
+            if let i = sessions.firstIndex(where: { $0.id == selectedID }), sessions[i].domainID == "linelogo" {
+                sessions[i].title = name
+                try? store.save(sessions[i])
+            }
+        case .imageReference:
+            var s = Session(title: name, domainID: "image")
+            s.imageReference = ImageReference(path: url.path, denoise: 0.55)
+            do {
+                try store.save(s)
+                sessions.insert(s, at: 0)
+                selectedID = s.id
+            } catch {
+                alertMessage = error.localizedDescription
+            }
+        }
     }
 
     // MARK: - Blender Script: scripts copied from Claude
@@ -251,6 +291,7 @@ final class AppModel: ObservableObject {
     var activeRoles: [AgentRole] {
         // Beats are made from your samples directly; only the Music Producer helps set them up.
         if adapter.id == "beats" { return [.producer] }
+        if adapter.id == "image", current?.imageReference != nil { return [] }
         var roles: [AgentRole] = [.dialDesigner]
         if adapter.capabilities.needsImageProvider || adapter.capabilities.needsVideoProvider { roles.append(.artDirector) }
         else if adapter.capabilities.kind == .code { roles.append(.coder) }
@@ -366,6 +407,302 @@ final class AppModel: ObservableObject {
         try? store.save(s)
     }
 
+    @Published private(set) var creatingDrawing = false
+
+    func drawingProject(for sessionID: UUID) -> URL {
+        store.assetsDir.appendingPathComponent(sessionID.uuidString).appendingPathComponent("Drawing.blend")
+    }
+
+    func openGreasePencilDrawing(reference: URL? = nil, automaticTrace: Bool = false, multiShot: Bool = false, walkPoses: [URL] = []) {
+        guard !creatingDrawing else { return }
+        let existing = adapter.id == "linelogo" && reference == nil && walkPoses.isEmpty ? current : nil
+        let session = existing ?? Session(title: walkPoses.isEmpty ? "Grease Pencil Drawing" : "Walk Cycle", domainID: "linelogo")
+        let drawing = drawingProject(for: session.id)
+        let projectName = multiShot ? "Multi-Shot.blend" : "Auto Trace.blend"
+        let project = automaticTrace ? drawing.deletingLastPathComponent().appendingPathComponent(projectName) : drawing
+        let blender = URL(fileURLWithPath: BlenderStageAdapter.blenderPath)
+        guard FileManager.default.isExecutableFile(atPath: blender.path) else {
+            alertMessage = "Install Blender in Applications to open a Grease Pencil drawing."
+            return
+        }
+        if FileManager.default.fileExists(atPath: project.path) {
+            NSWorkspace.shared.open([project], withApplicationAt: blender.deletingLastPathComponent()
+                .deletingLastPathComponent().deletingLastPathComponent(), configuration: .init()) { _, error in
+                if let error { Task { @MainActor in self.alertMessage = error.localizedDescription } }
+            }
+            return
+        }
+        let reference = reference ?? existing.flatMap { GreasePencilLogoAdapter.imagePath(from: $0.goal) }
+            .map { URL(fileURLWithPath: $0) }
+        let folder = project.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let script = folder.appendingPathComponent("Create Drawing.py")
+            let movie = folder.appendingPathComponent(multiShot ? "Multi-Shot Animation" : (automaticTrace ? "Auto Trace Animation" : "Animation"))
+            let setup: String
+            if !walkPoses.isEmpty {
+                setup = try GreasePencilProject.walkScript(poses: walkPoses)
+            } else if automaticTrace, let reference {
+                var state = session.workingState
+                state.goal = reference.path
+                setup = try GreasePencilLogoAdapter.editableTrace(state, project: project, movie: movie, multiShot: multiShot)
+            } else {
+                setup = GreasePencilProject.setupScript
+            }
+            try setup.write(to: script, atomically: true, encoding: .utf8)
+            let process = Process()
+            process.executableURL = blender
+            process.arguments = GreasePencilProject.arguments(for: project, script: script, reference: reference,
+                                                              movie: movie)
+            try process.run()
+            if existing == nil {
+                try store.save(session)
+                sessions.insert(session, at: 0)
+                selectedID = session.id
+            }
+            creatingDrawing = true
+            Task {
+                defer {
+                    creatingDrawing = false
+                    try? FileManager.default.removeItem(at: script)
+                }
+                for _ in 0..<120 {
+                    if FileManager.default.fileExists(atPath: project.path) { return }
+                    if !process.isRunning { break }
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
+                if !FileManager.default.fileExists(atPath: project.path) {
+                    alertMessage = "Blender didn't save the drawing. Check the Blender window and try again."
+                }
+            }
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    func renderPhotoReveal4K() {
+        guard let goal = current?.goal, let path = GreasePencilLogoAdapter.imagePath(from: goal),
+              let image = NSImage(contentsOfFile: path), image.size.width > 0, image.size.height > 0 else {
+            alertMessage = "Choose a readable image first."
+            return
+        }
+        let preset: [String: Double] = [
+            "Resolution": 100, "Framing": image.size.height > image.size.width ? 100 : 0,
+            "Photo reveal": 100, "Stroke opacity": 0, "Glow": 0, "Texture fidelity": 100,
+            "Anti-aliasing": 60, "Exposure": 50, "Contrast": 50, "Saturation": 50,
+            "Warmth": 50, "Light falloff": 0, "Camera push": 0
+        ]
+        applyGreasePencilStyle(preset)
+        generate(.render, force: true)
+    }
+
+    func applyGreasePencilStyle(_ preset: [String: Double]) {
+        let values = Dictionary(uniqueKeysWithValues: preset.map { ($0.key.lowercased(), $0.value) })
+        update { session in
+            let names = Set(session.dials.map { $0.name.lowercased() })
+            session.dials += GreasePencilLogoAdapter.standardDials.filter { !names.contains($0.name.lowercased()) }
+            for index in session.dials.indices {
+                if let value = values[session.dials[index].name.lowercased()] {
+                    session.dials[index].value = value
+                }
+            }
+        }
+    }
+
+    func chooseWalkPoses() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Walk Poses"
+        panel.message = "Choose four or eight transparent PNGs named in playback order (01.png, 02.png, …)."
+        panel.allowedContentTypes = [.png]
+        panel.allowsMultipleSelection = true
+        guard panel.runModal() == .OK else { return }
+        let poses = panel.urls.sorted {
+            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+        }
+        guard [4, 8].contains(poses.count) else {
+            alertMessage = "Choose four or eight pose images."
+            return
+        }
+        openGreasePencilDrawing(walkPoses: poses)
+    }
+
+    func importGreasePencilAnimation() {
+        guard let session = current else { return }
+        let panel = NSOpenPanel()
+        panel.directoryURL = drawingProject(for: session.id).deletingLastPathComponent()
+        panel.allowedContentTypes = [.mpeg4Movie, .quickTimeMovie]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let asset = try store.saveAsset(Data(contentsOf: url, options: .mappedIfSafe),
+                                            ext: url.pathExtension, sessionID: session.id, name: UUID().uuidString)
+            updateSession(session.id) {
+                $0.record(Output(kind: .video, text: url.lastPathComponent, assetPath: asset,
+                                 provider: "Blender", model: "Grease Pencil"), origin: .imported, state: session.workingState)
+            }
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    func openStudioStyleSession() {
+        guard let goal = current?.goal, let path = GreasePencilLogoAdapter.imagePath(from: goal) else { return }
+        guard imageProviderKind == "comfyui" else {
+            alertMessage = "Select ComfyUI on this Mac in Settings → Images to restyle a reference."
+            return
+        }
+        var session = Session(title: "Studio Style", domainID: "image")
+        session.imageReference = ImageReference(path: path, denoise: 0.55)
+        do {
+            try store.save(session)
+            sessions.insert(session, at: 0)
+            selectedID = session.id
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    func applyStudioStyle(_ style: StudioStyle) {
+        guard adapter.id == "image", imageProviderKind == "comfyui", current?.imageReference != nil else { return }
+        update {
+            $0.setGoal(style.prompt)
+            // A stronger starting value gives the model room to change materials and texture.
+            let denoise = max($0.imageReference?.denoise ?? 0.55, 0.55)
+            $0.imageReference?.denoise = denoise
+        }
+        generate(.preview, force: true)
+    }
+
+    /// Image without a reference: adds the Studio look to the goal (replacing any earlier look) and previews it.
+    @Published private(set) var trueTracing = false
+    @Published private(set) var lastTrueTraceFolder: URL?
+
+    /// True Trace: Grease Pencil redraws the chosen image in a look (or faithfully, with no look).
+    /// Records the drawing-on video and the finished still in History; the .blend stays in the run's folder.
+    func trueTrace(look: StudioStyle?) {
+        guard !trueTracing, let session = current, ["linelogo", "model3d"].contains(adapter.id) else { return }
+        guard let path = GreasePencilLogoAdapter.imagePath(from: session.goal) else {
+            alertMessage = "Choose an image first (Choose Image… under the goal)."
+            return
+        }
+        let family: TrueTrace.Family
+        if let look {
+            guard let f = TrueTrace.family(look: look.name, collection: look.collection) else {
+                alertMessage = "Grease Pencil can't draw \(look.name): it needs real 3D surfaces or a photograph. Pick a 2D look."
+                return
+            }
+            family = f
+        } else {
+            family = .faithful
+        }
+        let label = look?.name ?? "Faithful"
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "yyyy-MM-dd HHmmss"
+        let safe = label.components(separatedBy: CharacterSet(charactersIn: "/:\\?*\"<>|")).joined(separator: "-")
+        let folder = drawingProject(for: session.id).deletingLastPathComponent()
+            .appendingPathComponent("True Trace \(safe) \(df.string(from: Date()))")
+        trueTracing = true
+        Task {
+            defer { trueTracing = false }
+            do {
+                // The Detail slider in Choose your look (percent; 60 leaves the look as designed).
+                let detail = (UserDefaults.standard.object(forKey: "traceDetail") as? Double ?? 60) / 100
+                let result = try await TrueTrace.run(image: URL(fileURLWithPath: path), family: family,
+                                                     look: look?.traceLook, detail: detail, folder: folder)
+                let movie = try store.saveAsset(Data(contentsOf: result.movie, options: .mappedIfSafe), ext: "mp4",
+                                                sessionID: session.id, name: UUID().uuidString)
+                let still = try store.saveAsset(Data(contentsOf: result.still), ext: "png",
+                                                sessionID: session.id, name: UUID().uuidString)
+                updateSession(session.id) {
+                    _ = $0.record(Output(kind: .video, text: "\(label), drawing on. \(result.summary)", assetPath: movie,
+                                     provider: "Blender", model: "Grease Pencil · True Trace", agent: "True Trace"),
+                              origin: .render, state: session.workingState)
+                    _ = $0.record(Output(kind: .image, text: "\(label). \(result.summary) Blender file: \(result.project.path)",
+                                     assetPath: still, provider: "Blender", model: "Grease Pencil · True Trace", agent: "True Trace"),
+                              origin: .render, state: session.workingState)
+                }
+                lastTrueTraceFolder = folder
+            } catch {
+                alertMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// The 3D looks: Blender sculpts the chosen image into a rounded model with the look's material,
+    /// records the still and the turntable in History, and keeps the .blend and .glb in the run's folder.
+    func sculpt3D(look: StudioStyle) {
+        guard !trueTracing, let session = current, ["linelogo", "model3d"].contains(adapter.id) else { return }
+        guard let path = GreasePencilLogoAdapter.imagePath(from: session.goal) else {
+            alertMessage = "Choose an image first (Choose Image… under the goal)."
+            return
+        }
+        guard let finish = Sculpt3D.finish(look: look.name) else {
+            alertMessage = "\(look.name) isn't a 3D look Blender can build."
+            return
+        }
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "yyyy-MM-dd HHmmss"
+        let safe = look.name.components(separatedBy: CharacterSet(charactersIn: "/:\\?*\"<>|")).joined(separator: "-")
+        let folder = drawingProject(for: session.id).deletingLastPathComponent()
+            .appendingPathComponent("3D \(safe) \(df.string(from: Date()))")
+        trueTracing = true
+        Task {
+            defer { trueTracing = false }
+            do {
+                let result = try await Sculpt3D.run(image: URL(fileURLWithPath: path), finish: finish, folder: folder)
+                let movie = try store.saveAsset(Data(contentsOf: result.movie, options: .mappedIfSafe), ext: "mp4",
+                                                sessionID: session.id, name: UUID().uuidString)
+                let still = try store.saveAsset(Data(contentsOf: result.still), ext: "png",
+                                                sessionID: session.id, name: UUID().uuidString)
+                let files = "Blender file: \(result.project.path)" + (result.model.map { ". Model: \($0.path)" } ?? "")
+                updateSession(session.id) {
+                    _ = $0.record(Output(kind: .video, text: "\(look.name), turntable. \(result.summary)", assetPath: movie,
+                                         provider: "Blender", model: "Blender 3D · \(finish.title)", agent: "Sculpt 3D"),
+                                  origin: .render, state: session.workingState)
+                    _ = $0.record(Output(kind: .image, text: "\(look.name). \(result.summary) \(files)", assetPath: still,
+                                         provider: "Blender", model: "Blender 3D · \(finish.title)", agent: "Sculpt 3D"),
+                                  origin: .render, state: session.workingState)
+                }
+                lastTrueTraceFolder = folder
+            } catch {
+                alertMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func showLastTrueTrace() {
+        guard let folder = lastTrueTraceFolder else { return }
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        let project = files.first { $0.hasSuffix(".blend") }.map { folder.appendingPathComponent($0) }
+        NSWorkspace.shared.activateFileViewerSelecting([project ?? folder])
+    }
+
+    /// Text, Image without a reference, 3D Stage: adds the look to the goal (replacing any earlier look) and previews.
+    /// Text writes for it, Image draws it, 3D Stage puts the 3D look's finish on the model.
+    func useStudioLook(_ style: StudioStyle) {
+        guard ["image", "text", "stage"].contains(adapter.id) else { return }
+        update { $0.setGoal(style.goal(adding: $0.goal)) }
+        generate(.preview, force: true)
+    }
+
+    func openInLineLogo(_ url: URL) {
+        var s = Session(title: "Image variation animation", domainID: "linelogo")
+        do {
+            let asset = try store.saveAsset(Data(contentsOf: url), ext: url.pathExtension,
+                                            sessionID: s.id, name: "source-image")
+            guard let source = store.assetURL(asset) else {
+                throw PrismError.local("Couldn't locate the copied image.")
+            }
+            s.goal = source.path
+            try store.save(s)
+            sessions.insert(s, at: 0)
+            selectedID = s.id
+        } catch {
+            alertMessage = "Couldn't create the True Trace session: \(error.localizedDescription)"
+        }
+    }
+
     func newSession(from template: EditorTemplate, goal: String) {
         let s = template.makeSession(goal: goal)
         sessions.insert(s, at: 0)
@@ -423,7 +760,10 @@ final class AppModel: ObservableObject {
     }
 
     /// Fields that work without a goal: Line Logo uses the emblem, Animation and 3D Stage their samples.
-    var goalOptional: Bool { ["linelogo", "animate", "stage"].contains(adapter.id) }
+    var goalOptional: Bool {
+        ["linelogo", "animate", "stage"].contains(adapter.id)
+            || (adapter.id == "image" && current?.imageReference != nil)
+    }
 
     func suggestDials() async {
         guard let s = current, goalOptional || !s.goal.trimmed.isEmpty else {
@@ -432,13 +772,25 @@ final class AppModel: ObservableObject {
         }
         suggesting = true
         defer { suggesting = false }
+        if adapter.id == "image", s.imageReference != nil {
+            generate(.preview, force: true)
+            return
+        }
         if adapter.id == "beats" {
             await suggestBeatDials(s)
             return
         }
         do {
-            let dials = try await adapter.suggestDials(for: s.goal, using: providers)
-            updateSession(s.id) { $0.dials = dials }
+            let selectedAdapter = adapter
+            let dials = try await selectedAdapter.suggestDials(for: s.goal, using: providers)
+            updateSession(s.id) { session in
+                if selectedAdapter.id == "linelogo" {
+                    let names = Set(session.dials.map { $0.name.lowercased() })
+                    session.dials += dials.filter { !names.contains($0.name.lowercased()) }
+                } else {
+                    session.dials = dials
+                }
+            }
             generate(.preview, force: true)
         } catch {
             phase = .failed(error.localizedDescription)

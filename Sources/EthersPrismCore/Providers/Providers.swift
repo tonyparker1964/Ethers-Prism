@@ -1,4 +1,6 @@
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 // MARK: - Contracts
 
@@ -14,11 +16,15 @@ public struct ImageJob: Hashable, Sendable {
     public var quality: Quality
     public var seed: UInt64
 
-    public init(prompt: String, negative: String, quality: Quality, seed: UInt64) {
+    public var reference: ImageReference?
+
+    public init(prompt: String, negative: String, quality: Quality, seed: UInt64,
+                reference: ImageReference? = nil) {
         self.prompt = prompt
         self.negative = negative
         self.quality = quality
         self.seed = seed
+        self.reference = reference
     }
 }
 
@@ -37,7 +43,12 @@ public protocol ImageProvider: Sendable {
     var model: String { get }
     /// Plain statement of whether previews really cost less than full renders.
     var previewCostNote: String { get }
+    var supportsReferenceImages: Bool { get }
     func generate(_ job: ImageJob) async throws -> ImageResult
+}
+
+public extension ImageProvider {
+    var supportsReferenceImages: Bool { false }
 }
 
 /// The providers for one generation. Each agent role can have its own text provider;
@@ -135,6 +146,7 @@ public struct ComfyUISettings: Codable, Hashable, Sendable {
 
 public struct ComfyUIImageProvider: ImageProvider {
     public let name = "ComfyUI (local)"
+    public let supportsReferenceImages = true
     public var settings: ComfyUISettings
     public var model: String { settings.checkpoint }
     public var previewCostNote: String {
@@ -150,7 +162,7 @@ public struct ComfyUIImageProvider: ImageProvider {
     }
 
     /// The node graph sent to ComfyUI: checkpoint → prompts → sampler → decode → save.
-    public static func workflow(for job: ImageJob, settings s: ComfyUISettings) -> [String: Any] {
+    public static func workflow(for job: ImageJob, settings s: ComfyUISettings, uploadedReference: String? = nil) -> [String: Any] {
         let size = job.quality == .preview ? s.previewSize : s.renderSize
         let steps = job.quality == .preview ? s.previewSteps : s.renderSteps
         func node(_ cls: String, _ inputs: [String: Any]) -> [String: Any] {
@@ -161,10 +173,18 @@ public struct ComfyUIImageProvider: ImageProvider {
         graph["4"] = node("CheckpointLoaderSimple", ["ckpt_name": s.checkpoint])
         graph["6"] = node("CLIPTextEncode", ["text": job.prompt, "clip": link("4", 1)])
         graph["7"] = node("CLIPTextEncode", ["text": job.negative, "clip": link("4", 1)])
-        graph["5"] = node("EmptyLatentImage", ["width": size, "height": size, "batch_size": 1])
+        let denoise: Double
+        if let uploadedReference, let reference = job.reference {
+            graph["10"] = node("LoadImage", ["image": uploadedReference])
+            graph["5"] = node("VAEEncode", ["pixels": link("10", 0), "vae": link("4", 2)])
+            denoise = reference.denoise.isFinite ? min(1, max(0, reference.denoise)) : 0.25
+        } else {
+            graph["5"] = node("EmptyLatentImage", ["width": size, "height": size, "batch_size": 1])
+            denoise = 1
+        }
         graph["3"] = node("KSampler", [
             "seed": NSNumber(value: job.seed), "steps": steps, "cfg": s.cfg, "sampler_name": s.sampler,
-            "scheduler": s.scheduler, "denoise": 1.0,
+            "scheduler": s.scheduler, "denoise": denoise,
             "model": link("4", 0), "positive": link("6", 0), "negative": link("7", 0), "latent_image": link("5", 0)
         ])
         graph["8"] = node("VAEDecode", ["samples": link("3", 0), "vae": link("4", 2)])
@@ -177,11 +197,17 @@ public struct ComfyUIImageProvider: ImageProvider {
         guard !settings.checkpoint.trimmed.isEmpty else {
             throw PrismError.comfy("choose a model (checkpoint) in Settings.")
         }
+        let uploadedReference: String?
+        if let reference = job.reference {
+            uploadedReference = try await upload(reference, to: base, maxSize: job.quality == .preview ? settings.previewSize : settings.renderSize)
+        } else {
+            uploadedReference = nil
+        }
         var req = URLRequest(url: base.appendingPathComponent("prompt"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "content-type")
         req.httpBody = try JSONSerialization.data(withJSONObject: [
-            "prompt": Self.workflow(for: job, settings: settings),
+            "prompt": Self.workflow(for: job, settings: settings, uploadedReference: uploadedReference),
             "client_id": "ethers-prism"
         ])
         let data: Data
@@ -230,6 +256,45 @@ public struct ComfyUIImageProvider: ImageProvider {
             }
         }
         throw PrismError.comfy("timed out waiting for the image.")
+    }
+
+    private func upload(_ reference: ImageReference, to base: URL, maxSize: Int) async throws -> String {
+        let url = URL(fileURLWithPath: reference.path)
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: maxSize
+              ] as CFDictionary) else {
+            throw PrismError.comfy("the reference image couldn't be read. Choose it again.")
+        }
+        let png = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(png, UTType.png.identifier as CFString, 1, nil) else {
+            throw PrismError.comfy("couldn't prepare the reference image.")
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else {
+            throw PrismError.comfy("couldn't encode the reference image.")
+        }
+
+        let boundary = UUID().uuidString
+        var request = URLRequest(url: base.appendingPathComponent("upload/image"))
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"image\"; filename=\"ethers-prism-\(UUID().uuidString).png\"\r\nContent-Type: image/png\r\n\r\n".utf8)
+        body.append(png as Data)
+        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        let (data, response) = try await URLSession.shared.upload(for: request, from: body)
+        guard let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status),
+              let result = try? JSONDecoder().decode(UploadedReference.self, from: data) else {
+            throw PrismError.comfy("couldn't upload the reference image. Check the ComfyUI connection.")
+        }
+        return [result.subfolder, result.name].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "/")
+    }
+
+    private struct UploadedReference: Decodable {
+        let name: String
+        let subfolder: String?
     }
 
     /// Lists the checkpoints ComfyUI can load, for the Settings picker.

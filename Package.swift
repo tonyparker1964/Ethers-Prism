@@ -24,6 +24,7 @@ let package = Package(
         .executableTarget(
             name: "EthersPrism",
             dependencies: ["EthersPrismCore"],
+            resources: [.copy("StudioCatalog")],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT",
                                            "-Xlinker", "__info_plist", "-Xlinker", infoPlist,
                                                           "-Xlinker", "-sectcreate", "-Xlinker", "__TEXT",
