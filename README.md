@@ -2,7 +2,7 @@
 
 **Don't ask the AI for the thing. Ask it for an instrument to make the thing.**
 
-**Version 1.4.0** (shown in the sidebar under the logo and in Ethers Prism → About). See [Versions](#versions).
+**Version 1.5.0** (shown in the sidebar under the logo and in Ethers Prism → About). See [Versions](#versions).
 
 Describe a goal and Ethers Prism builds you an editor: dials with named ends, plus fixed requirements. Move the dials, watch previews change, sweep one dial across its range, branch through history, compare states, render the version you choose, and export it with an authorship log. Choosing and editing the dials is part of the authorship.
 
@@ -33,7 +33,9 @@ Each job has its own agent and model. You still choose the dials and the results
 | Checker | Reviews each result against the fixed requirements; flags with quoted evidence, never rewrites | LM Studio · Qwen3 8B |
 | Music Producer | For Beats: reads the goal and your sample library, picks the style, up to three kits and the starting dial positions | LM Studio · Qwen3 8B |
 
-Each agent can use Claude (Anthropic), LM Studio, Ollama or Mock. **Teach by example** (on by default): before each job, the Writer, Art Director and Dial Designer see up to 3 of your recent starred results or hand edits, so they learn your taste. Nothing is trained and nothing leaves your Mac. Agents that must return data (dials, image prompts, reviews) ask local servers for JSON-schema output, and small slips are repaired.
+Each agent can use **Claude (your account)**, **ChatGPT (your account)**, Claude (API key), LM Studio, Ollama or Mock.
+
+**Claude and ChatGPT, no API keys** (Settings → Agents, top): Claude runs through Claude Code and ChatGPT through OpenAI's Codex, both signed in with your own accounts on this Mac, the same way Ether Explains does it. They use your Claude and ChatGPT plans' usage (ChatGPT needs Plus or higher). **Set Up** installs the tool and signs in, in Terminal; **Sign In** signs in again; **Check** shows whether it's connected. **All Claude** / **All ChatGPT** (or **Use for All**) puts every agent on that account; you can also mix, for example ChatGPT as the Checker and Claude for the rest. Leave the model empty for your account's default, or type one (for Claude: `sonnet`, `opus`, `haiku`). Stopping a job stops the tool too. **Teach by example** (on by default): before each job, the Writer, Art Director and Dial Designer see up to 3 of your recent starred results or hand edits, so they learn your taste. Nothing is trained and nothing leaves your Mac. Agents that must return data (dials, image prompts, reviews) ask local servers for JSON-schema output, and small slips are repaired.
 
 **Memory hand-off:** large local models (20B+) and ComfyUI can't share 24 GB. With hand-off on, ComfyUI releases its model before a large agent runs, and LM Studio unloads large models before ComfyUI renders. Small models stay loaded.
 
@@ -135,6 +137,7 @@ Sessions, history, sweep, compare, templates, storage and export work automatica
 
 The number lives in `Sources/EthersPrismCore/Core/AppVersion.swift` and `Support/Info.plist` (a test keeps them in step). The middle number goes up for new fields or features, the last for fixes. After an update, run `./install-app.sh` to refresh the copy in Applications.
 
+- **1.5.0** (Nov 15, 2026): Claude and ChatGPT through your own accounts (Claude Code and Codex), no API keys: choose them per agent or for all agents in Settings → Agents.
 - **1.4.0** (Nov 11, 2026): Cleaner macOS look: sessions grouped by field with search, Preview and Render in the toolbar and at the bottom of the controls, grouped settings-style controls, History in a side inspector, results shown on a canvas. Blender Script errors show only the script's own lines.
 - **1.3.0** (Nov 11, 2026): Blender Script (from Claude) field: scripts copied from Claude fill in by themselves, are saved in a library, preview as one frame and render as MP4.
 - **1.2.0** (Nov 11, 2026): 3D from Image (Blender) field with Relief and Extrude, metal/glass/neon materials, and Open in 3D Stage.

@@ -28,11 +28,13 @@ public enum AgentRole: String, Codable, CaseIterable, Hashable, Sendable {
 }
 
 public enum AgentBackend: String, Codable, CaseIterable, Hashable, Sendable {
-    case anthropic, lmStudio, ollama, mock
+    case claudeAccount, chatGPT, anthropic, lmStudio, ollama, mock
 
     public var label: String {
         switch self {
-        case .anthropic: return "Claude (Anthropic)"
+        case .claudeAccount: return "Claude (your account)"
+        case .chatGPT: return "ChatGPT (your account)"
+        case .anthropic: return "Claude (API key)"
         case .lmStudio: return "LM Studio (this Mac)"
         case .ollama: return "Ollama"
         case .mock: return "Mock (test only)"
@@ -40,6 +42,18 @@ public enum AgentBackend: String, Codable, CaseIterable, Hashable, Sendable {
     }
 
     public var isLocal: Bool { self == .lmStudio || self == .ollama }
+
+    /// Runs through your own signed-in Claude or ChatGPT account (Claude Code or Codex), no API key.
+    public var account: AccountCLI? {
+        switch self {
+        case .claudeAccount: return .claude
+        case .chatGPT: return .codex
+        default: return nil
+        }
+    }
+
+    /// Account agents can leave the model empty to use the account's default model.
+    public var needsModel: Bool { self != .mock && account == nil }
 }
 
 public struct AgentAssignment: Codable, Hashable, Identifiable, Sendable {
@@ -87,6 +101,11 @@ public struct AgentTeam: Codable, Hashable, Sendable {
         AgentAssignment(role: .checker, backend: .lmStudio, model: smallLocalModel),
         AgentAssignment(role: .producer, backend: .lmStudio, model: smallLocalModel)
     ])
+
+    /// Every agent through one signed-in account (Claude or ChatGPT), each on the account's default model.
+    public static func allAccount(_ backend: AgentBackend) -> [AgentAssignment] {
+        AgentRole.allCases.map { AgentAssignment(role: $0, backend: backend, model: "") }
+    }
 
     public static let mock = AgentTeam(assignments: AgentRole.allCases.map {
         AgentAssignment(role: $0, backend: .mock, model: "mock")

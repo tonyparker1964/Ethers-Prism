@@ -60,6 +60,9 @@ final class AppModel: ObservableObject {
     @Published var comfyStatus: String?
     @Published var localModels: [AgentBackend: [String]] = [:]
     @Published var localStatus: [AgentBackend: String] = [:]
+    /// Claude Code and Codex: installed and signed in? Nil until checked.
+    @Published var accountStatus: [AccountCLI: AccountStatus] = [:]
+    @Published var accountChecking: Set<AccountCLI> = []
 
     // Mixar
     @Published var mixarTools: [MCPTool] = []
@@ -113,6 +116,7 @@ final class AppModel: ObservableObject {
         }
         if sessions.isEmpty { newSession() } else { selectedID = sessions.first?.id }
         startClipboardWatch()
+        Task { await checkAccounts(onlyInUse: true) }
     }
 
     // MARK: - Blender Script: scripts copied from Claude
@@ -210,6 +214,8 @@ final class AppModel: ObservableObject {
         let a = team.assignment(role)
         let base: any TextProvider
         switch a.backend {
+        case .claudeAccount: base = ClaudeAccountTextProvider(model: a.model)
+        case .chatGPT: base = ChatGPTAccountTextProvider(model: a.model)
         case .anthropic: base = AnthropicTextProvider(apiKey: Keychain.read(Self.keyAccount) ?? "", model: a.model)
         case .lmStudio: base = OpenAICompatibleTextProvider(name: "LM Studio", baseURL: team.lmStudioURL, model: a.model)
         case .ollama: base = OpenAICompatibleTextProvider(name: "Ollama", baseURL: team.ollamaURL, model: a.model)
@@ -268,7 +274,15 @@ final class AppModel: ObservableObject {
         if !needKey.isEmpty && !hasAPIKey {
             return "\(needKey.map(\.title).joined(separator: ", ")) use Claude, but no Anthropic API key is set. Add one in Settings → Agents, or switch those agents to LM Studio."
         }
-        let noModel = activeRoles.filter { team.assignment($0).backend != .mock && team.assignment($0).model.trimmed.isEmpty }
+        for cli in AccountCLI.allCases {
+            let users = activeRoles.filter { team.assignment($0).backend.account == cli }
+            guard !users.isEmpty, let st = accountStatus[cli], !st.ready else { continue }
+            let who = users.map(\.title).joined(separator: ", ")
+            return st.installed
+                ? "\(who) use \(cli.serviceName), but \(cli.toolName) isn't signed in. Press Sign In next to \(cli.serviceName) in Settings → Agents."
+                : "\(who) use \(cli.serviceName), but \(cli.toolName) isn't on this Mac yet. Press Set Up next to \(cli.serviceName) in Settings → Agents."
+        }
+        let noModel = activeRoles.filter { team.assignment($0).backend.needsModel && team.assignment($0).model.trimmed.isEmpty }
         if !noModel.isEmpty {
             return "Choose a model for \(noModel.map(\.title).joined(separator: ", ")) in Settings → Agents."
         }
@@ -801,6 +815,38 @@ final class AppModel: ObservableObject {
             localModels[backend] = []
             localStatus[backend] = error.localizedDescription
         }
+    }
+
+    // MARK: - Claude and ChatGPT accounts
+
+    func checkAccount(_ cli: AccountCLI) async {
+        accountChecking.insert(cli)
+        accountStatus[cli] = await AccountCLIs.status(cli)
+        accountChecking.remove(cli)
+    }
+
+    /// Checks both accounts that the agents use (or both, when asked from Settings).
+    func checkAccounts(onlyInUse: Bool = false) async {
+        for cli in AccountCLI.allCases {
+            if onlyInUse && !team.assignments.contains(where: { $0.backend.account == cli }) { continue }
+            await checkAccount(cli)
+        }
+    }
+
+    /// Opens Terminal to install (if needed) and sign in with your Claude or ChatGPT account.
+    func connectAccount(_ cli: AccountCLI) {
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) { try AccountCLIs.openSignIn(cli) }.value
+            } catch {
+                alertMessage = "Couldn't open the sign-in window: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func useAccountForAllAgents(_ cli: AccountCLI) {
+        team.assignments = AgentTeam.allAccount(cli.backend)
+        Task { await checkAccount(cli) }
     }
 
     func assignmentBinding(_ role: AgentRole) -> Binding<AgentAssignment> {

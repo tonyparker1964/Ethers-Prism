@@ -20,6 +20,19 @@ struct SettingsView: View {
     private var agentsTab: some View {
         Form {
             Section {
+                AccountRow(cli: .claude)
+                AccountRow(cli: .codex)
+                Text("No API keys: Claude runs through Claude Code and ChatGPT through OpenAI's Codex, both signed in with your own accounts on this Mac, and they use your plans' usage. ChatGPT needs a paid ChatGPT plan (Plus or higher). Choose them per agent below, or press Use for All.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } header: {
+                Text("Claude and ChatGPT")
+            }
+            .task { await model.checkAccounts() }
+            // Coming back from the Terminal sign-in updates the status by itself.
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                Task { await model.checkAccounts() }
+            }
+            Section {
                 Text("One agent per job. You still choose the dials and the results; agents only do the job they're given.")
                     .font(.caption).foregroundStyle(.secondary)
                 // The Coder only served the retired Code field.
@@ -35,6 +48,8 @@ struct SettingsView: View {
                 HStack {
                     Text("Agents")
                     Spacer()
+                    Button("All Claude") { model.useAccountForAllAgents(.claude) }
+                    Button("All ChatGPT") { model.useAccountForAllAgents(.codex) }
                     Button("All Local") { model.team.assignments = AgentTeam.local.assignments }
                     Button("All Mock") { model.team.assignments = AgentTeam.mock.assignments }
                 }
@@ -269,6 +284,10 @@ struct AgentRow: View {
                 .fixedSize()
             }
             Text(role.job).font(.caption).foregroundStyle(.secondary)
+            if let cli = assignment.backend.account, let st = model.accountStatus[cli], !st.ready {
+                Text(st.installed ? "\(cli.toolName) isn't signed in yet. Press Sign In above." : "\(cli.toolName) isn't on this Mac yet. Press Set Up above.")
+                    .font(.caption2).foregroundStyle(.orange)
+            }
             if assignment.backend != .mock {
                 let options = model.localModels[assignment.backend] ?? []
                 if assignment.backend.isLocal && !options.isEmpty {
@@ -277,8 +296,7 @@ struct AgentRow: View {
                         ForEach(options, id: \.self) { Text($0).tag($0) }
                     }
                 } else {
-                    TextField(assignment.backend == .anthropic ? "Model (for example claude-sonnet-5-5)" : "Model id",
-                              text: $assignment.model)
+                    TextField(placeholder, text: $assignment.model)
                 }
                 if assignment.backend.isLocal && LocalMemory.isLarge(assignment.model) {
                     Text("Large model: needs about 19 GB of memory. It takes turns with ComfyUI.")
@@ -287,5 +305,59 @@ struct AgentRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+
+    private var placeholder: String {
+        switch assignment.backend {
+        case .claudeAccount: return "Model (empty = your default; or sonnet, opus, haiku)"
+        case .chatGPT: return "Model (empty = your ChatGPT default)"
+        case .anthropic: return "Model (for example claude-sonnet-5-5)"
+        default: return "Model id"
+        }
+    }
+}
+
+/// Claude or ChatGPT: installed? signed in? with buttons to set up, sign in and check.
+struct AccountRow: View {
+    @EnvironmentObject var model: AppModel
+    let cli: AccountCLI
+
+    var body: some View {
+        let st = model.accountStatus[cli]
+        let checking = model.accountChecking.contains(cli)
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: st?.ready == true ? "checkmark.circle.fill" : (st == nil || checking ? "circle.dotted" : "exclamationmark.circle"))
+                .foregroundStyle(st?.ready == true ? Color.green : (st == nil || checking ? Color.secondary : Color.orange))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title(st, checking)).font(.headline)
+                Text(detail(st)).font(.caption).foregroundStyle(.secondary).lineLimit(2).textSelection(.enabled)
+            }
+            Spacer()
+            Button("Check") { Task { await model.checkAccount(cli) } }
+                .disabled(checking)
+            if let st, !st.ready {
+                Button(st.installed ? "Sign In" : "Set Up") { model.connectAccount(cli) }
+                    .buttonStyle(.borderedProminent)
+            } else if st?.ready == true {
+                Button("Use for All") { model.useAccountForAllAgents(cli) }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func title(_ st: AccountStatus?, _ checking: Bool) -> String {
+        if checking || st == nil { return "\(cli.serviceName): checking…" }
+        guard let st else { return cli.serviceName }
+        if st.ready { return "\(cli.serviceName) is connected" }
+        return st.installed ? "\(cli.serviceName): sign in to \(cli.toolName)" : "\(cli.serviceName): \(cli.toolName) isn't on this Mac yet"
+    }
+
+    private func detail(_ st: AccountStatus?) -> String {
+        guard let st else { return "Through \(cli.toolName), signed in with your \(cli.serviceName) account." }
+        if !st.installed {
+            return "Set Up installs \(cli.toolName) and signs in, in Terminal. Then press Check."
+        }
+        if !st.ready { return "Sign In opens Terminal and your browser. Then come back and press Check." }
+        return [st.detail, st.version].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }
